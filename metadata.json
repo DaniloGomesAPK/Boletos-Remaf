@@ -1,0 +1,6 @@
+{
+  "name": "Sistema de Contas a Pagar",
+  "description": "Gerenciamento completo de contas a pagar com fornecedores, funcionários, lançamentos com cálculo de juros e dashboard financeiro.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
