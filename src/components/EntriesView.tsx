@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Entry, CalculatedEntry, Supplier, Employee, DocumentType, EntryStatus } from '../types';
-import { parseBRDate, formatBRL, getTodayDateString } from '../utils/calculations';
+import { parseBRDate, formatBRL, getTodayDateString, getTipoFavorecido, parseCurrencyInput } from '../utils/calculations';
 import { PlusCircle, Search, Edit2, Trash2, CheckCircle2, Clock, AlertCircle, XCircle, Filter, ArrowUpDown } from 'lucide-react';
 import { EditEntryModal } from './EditEntryModal';
 
@@ -41,6 +41,20 @@ export const EntriesView: React.FC<EntriesViewProps> = ({
   // Edit Modal State
   const [editingEntry, setEditingEntry] = useState<CalculatedEntry | null>(null);
 
+  const handleValueBlur = () => {
+    if (value.trim()) {
+      const parsed = parseCurrencyInput(value);
+      if (parsed > 0) {
+        setValue(
+          parsed.toLocaleString('pt-BR', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })
+        );
+      }
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -52,13 +66,13 @@ export const EntriesView: React.FC<EntriesViewProps> = ({
       alert('Por favor, informe a data de vencimento.');
       return;
     }
-    const numValue = parseFloat(value);
-    if (isNaN(numValue) || numValue <= 0) {
+    const numValue = parseCurrencyInput(value);
+    if (numValue <= 0) {
       alert('Por favor, informe um valor válido e maior que zero.');
       return;
     }
 
-    const numInterest = parseFloat(interestRate) || 0;
+    const numInterest = parseCurrencyInput(interestRate) || 0;
 
     // Identify Favorecido details
     let favorecidoName = '';
@@ -69,14 +83,14 @@ export const EntriesView: React.FC<EntriesViewProps> = ({
       const sup = suppliers.find((s) => s.id === id);
       if (sup) {
         favorecidoName = sup.name;
-        favorecidoType = 'Fornecedor';
+        favorecidoType = getTipoFavorecido(sup.name, employees, favorecidoSelect);
       }
     } else if (favorecidoSelect.startsWith('func-')) {
       const id = parseInt(favorecidoSelect.replace('func-', ''));
       const emp = employees.find((e) => e.id === id);
       if (emp) {
         favorecidoName = emp.name;
-        favorecidoType = 'Funcionário';
+        favorecidoType = getTipoFavorecido(emp.name, employees, favorecidoSelect);
       }
     }
 
@@ -239,12 +253,12 @@ export const EntriesView: React.FC<EntriesViewProps> = ({
                 Valor (R$) <span className="text-rose-500">*</span>
               </label>
               <input
-                type="number"
-                step="0.01"
-                min="0.01"
+                type="text"
+                inputMode="decimal"
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
-                placeholder="0,00"
+                onBlur={handleValueBlur}
+                placeholder="Ex: 1.950,00 ou 1950"
                 className="w-full px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none h-7.5 font-mono"
                 required
               />
@@ -453,7 +467,7 @@ export const EntriesView: React.FC<EntriesViewProps> = ({
                         <div className="flex flex-col">
                           <span>{entry.favorecidoName}</span>
                           <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                            {entry.favorecidoType}
+                            {getTipoFavorecido(entry.favorecidoName, employees, entry.favorecidoId)}
                           </span>
                         </div>
                       </td>

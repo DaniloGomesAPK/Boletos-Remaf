@@ -295,14 +295,6 @@ function AppContent() {
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        darkMode={darkMode}
-        setDarkMode={setDarkMode}
-        onExportJSON={handleExportJSON}
-        onImportJSON={handleImportJSON}
-        onExportCSV={handleExportCSV}
-        onRestoreSampleData={handleRestoreSampleData}
-        onClearAllData={handleClearAllData}
-        onOpenAuthModal={() => setIsAuthModalOpen(true)}
       />
 
       {/* Auth Modal */}
@@ -340,6 +332,14 @@ function AppContent() {
             onAddEmployee={handleAddEmployee}
             onUpdateEmployee={handleUpdateEmployee}
             onDeleteEmployee={handleDeleteEmployee}
+            darkMode={darkMode}
+            setDarkMode={setDarkMode}
+            onExportJSON={handleExportJSON}
+            onImportJSON={handleImportJSON}
+            onExportCSV={handleExportCSV}
+            onRestoreSampleData={handleRestoreSampleData}
+            onClearAllData={handleClearAllData}
+            onOpenAuthModal={() => setIsAuthModalOpen(true)}
           />
         )}
       </main>

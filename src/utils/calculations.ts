@@ -30,6 +30,50 @@ export function formatBRL(value: number): string {
   }).format(value || 0);
 }
 
+/**
+ * Parses user currency inputs (e.g., "1.950,00", "1950,50", "1.950", "1950", "R$ 1.950,00") into a numeric float.
+ */
+export function parseCurrencyInput(value: string | number): number {
+  if (typeof value === 'number') return isNaN(value) ? 0 : value;
+  if (!value || typeof value !== 'string') return 0;
+
+  // Remove currency symbol, spaces, and non-numeric characters except dots, commas, minus
+  let clean = value.replace(/[^0-9.,-]/g, '').trim();
+  if (!clean) return 0;
+
+  if (clean.includes('.') && clean.includes(',')) {
+    const lastDotIndex = clean.lastIndexOf('.');
+    const lastCommaIndex = clean.lastIndexOf(',');
+    if (lastCommaIndex > lastDotIndex) {
+      // BR format: 1.950,00 -> remove dots, replace comma with dot
+      clean = clean.replace(/\./g, '').replace(',', '.');
+    } else {
+      // US format: 1,950.00 -> remove commas
+      clean = clean.replace(/,/g, '');
+    }
+  } else if (clean.includes(',')) {
+    // Only comma: 1950,50 -> replace with dot
+    clean = clean.replace(',', '.');
+  } else if (clean.includes('.')) {
+    // Only dot: could be thousand separator (1.950) or decimal (1950.50)
+    const parts = clean.split('.');
+    if (parts.length > 2) {
+      // Multiple dots like 1.500.000 -> remove dots
+      clean = clean.replace(/\./g, '');
+    } else if (parts.length === 2) {
+      const integerPart = parts[0];
+      const decimalPart = parts[1];
+      if (decimalPart.length === 3 && integerPart.length >= 1) {
+        // e.g. "1.950" -> thousand separator -> 1950
+        clean = integerPart + decimalPart;
+      }
+    }
+  }
+
+  const num = parseFloat(clean);
+  return isNaN(num) ? 0 : num;
+}
+
 export const MONTHS_PT = [
   { value: 1, label: 'Janeiro', short: 'Jan' },
   { value: 2, label: 'Fevereiro', short: 'Fev' },
@@ -108,6 +152,20 @@ export function calculateEntryDetails(entry: Entry, todayStr: string = getTodayD
   };
 }
 
+export function getTipoFavorecido(
+  nomeFavorecido: string,
+  employees: Employee[] = [],
+  favorecidoId?: string
+): 'Funcionário' | 'Fornecedor' {
+  if (favorecidoId && favorecidoId.startsWith('func-')) {
+    return 'Funcionário';
+  }
+  if (!nomeFavorecido) return 'Fornecedor';
+  const nameNorm = nomeFavorecido.trim().toLowerCase();
+  const ehFuncionario = employees.some((f) => f.name.trim().toLowerCase() === nameNorm);
+  return ehFuncionario ? 'Funcionário' : 'Fornecedor';
+}
+
 export function calculateSummaries(
   entries: CalculatedEntry[],
   suppliers: Supplier[],
@@ -117,7 +175,10 @@ export function calculateSummaries(
 
   // Suppliers summaries
   suppliers.forEach((s) => {
-    const sEntries = entries.filter((e) => e.favorecidoName === s.name && e.favorecidoType === 'Fornecedor');
+    const sEntries = entries.filter((e) => {
+      const tipo = getTipoFavorecido(e.favorecidoName, employees, e.favorecidoId);
+      return e.favorecidoName === s.name && tipo === 'Fornecedor';
+    });
     
     let countPaid = 0, valuePaid = 0;
     let countOverdue = 0, valueOverdue = 0;
@@ -156,7 +217,10 @@ export function calculateSummaries(
 
   // Employees summaries
   employees.forEach((emp) => {
-    const eEntries = entries.filter((e) => e.favorecidoName === emp.name && e.favorecidoType === 'Funcionário');
+    const eEntries = entries.filter((e) => {
+      const tipo = getTipoFavorecido(e.favorecidoName, employees, e.favorecidoId);
+      return e.favorecidoName === emp.name && tipo === 'Funcionário';
+    });
 
     let countPaid = 0, valuePaid = 0;
     let countOverdue = 0, valueOverdue = 0;

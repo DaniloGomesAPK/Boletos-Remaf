@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Supplier, Employee, PaymentType } from '../types';
-import { Truck, UserCheck, Plus, Edit2, Trash2, Check, X } from 'lucide-react';
+import { Truck, UserCheck, Plus, Edit2, Trash2, Check, X, Database, Download, Upload, FileCode2, RefreshCw, Moon, Sun } from 'lucide-react';
+import { UserMenu } from './UserMenu';
 
 interface ConfigViewProps {
   suppliers: Supplier[];
@@ -11,6 +12,14 @@ interface ConfigViewProps {
   onAddEmployee: (name: string, paymentType: PaymentType) => void;
   onUpdateEmployee: (id: number, name: string, paymentType: PaymentType) => void;
   onDeleteEmployee: (id: number) => void;
+  darkMode: boolean;
+  setDarkMode: React.Dispatch<React.SetStateAction<boolean>>;
+  onExportJSON: () => void;
+  onImportJSON: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onExportCSV: () => void;
+  onRestoreSampleData: () => void;
+  onClearAllData: () => void;
+  onOpenAuthModal: () => void;
 }
 
 export const ConfigView: React.FC<ConfigViewProps> = ({
@@ -22,8 +31,17 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
   onAddEmployee,
   onUpdateEmployee,
   onDeleteEmployee,
+  darkMode,
+  setDarkMode,
+  onExportJSON,
+  onImportJSON,
+  onExportCSV,
+  onRestoreSampleData,
+  onClearAllData,
+  onOpenAuthModal,
 }) => {
-  const [activeTab, setActiveTab] = useState<'suppliers' | 'employees'>('suppliers');
+  const [activeTab, setActiveTab] = useState<'suppliers' | 'employees' | 'system'>('suppliers');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Supplier Form / Inline Edit state
   const [newSupplierName, setNewSupplierName] = useState('');
@@ -102,6 +120,18 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
         >
           <UserCheck className="w-3.5 h-3.5" />
           <span>Funcionários ({employees.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('system')}
+          className={`flex items-center gap-1.5 py-2 px-4 font-bold text-xs border-b-2 transition-all ${
+            activeTab === 'system'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          <Database className="w-3.5 h-3.5" />
+          <span>Sistema & Backup</span>
         </button>
       </div>
 
@@ -359,6 +389,102 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: SISTEMA & BACKUP */}
+      {activeTab === 'system' && (
+        <div className="space-y-4">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={onImportJSON}
+            accept=".json"
+            className="hidden"
+          />
+
+          {/* Autenticação e Nuvem */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4 shadow-2xs">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white mb-2">
+              Sincronização & Conta
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+              Gerencie seu acesso e sincronização em nuvem via Firebase Firestore.
+            </p>
+            <div className="flex items-center gap-3">
+              <UserMenu onOpenAuthModal={onOpenAuthModal} />
+            </div>
+          </div>
+
+          {/* Exportar & Backup */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4 shadow-2xs">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white mb-2">
+              Exportar & Backup de Dados
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+              Faça download dos seus dados ou importe um backup salvo anteriormente.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={onExportCSV}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded shadow-2xs transition-colors"
+              >
+                <FileCode2 className="w-3.5 h-3.5" />
+                <span>Exportar CSV</span>
+              </button>
+
+              <button
+                onClick={onExportJSON}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded border border-slate-700 transition-colors"
+              >
+                <Download className="w-3.5 h-3.5 text-blue-400" />
+                <span>Exportar Backup (JSON)</span>
+              </button>
+
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded border border-slate-700 transition-colors"
+              >
+                <Upload className="w-3.5 h-3.5 text-purple-400" />
+                <span>Importar Backup (JSON)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Preferências & Manutenção */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4 shadow-2xs">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white mb-2">
+              Preferências & Manutenção
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+              Alterne o tema do sistema ou restaure dados iniciais.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setDarkMode(!darkMode)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded border border-slate-300 dark:border-slate-700 transition-colors"
+              >
+                {darkMode ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-slate-600" />}
+                <span>{darkMode ? 'Modo Claro' : 'Modo Escuro'}</span>
+              </button>
+
+              <button
+                onClick={onRestoreSampleData}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700/50 text-xs font-semibold rounded transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Restaurar Dados Exemplo</span>
+              </button>
+
+              <button
+                onClick={onClearAllData}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700/50 text-xs font-semibold rounded transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Limpar Todos os Dados</span>
+              </button>
             </div>
           </div>
         </div>

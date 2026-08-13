@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CalculatedEntry, DocumentType, Supplier, Employee } from '../types';
+import { getTipoFavorecido, parseCurrencyInput } from '../utils/calculations';
 import { X, Check } from 'lucide-react';
 
 interface EditEntryModalProps {
@@ -25,7 +26,9 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
   const [docType, setDocType] = useState<DocumentType>(entry.docType);
   const [nfNumber, setNfNumber] = useState(entry.nfNumber || '');
   const [dueDate, setDueDate] = useState(entry.dueDate);
-  const [value, setValue] = useState(entry.value.toString());
+  const [value, setValue] = useState(
+    entry.value ? entry.value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''
+  );
   const [paymentDate, setPaymentDate] = useState(entry.paymentDate || '');
   const [interestRate, setInterestRate] = useState(entry.interestRate.toString());
 
@@ -35,17 +38,33 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
       setDocType(entry.docType);
       setNfNumber(entry.nfNumber || '');
       setDueDate(entry.dueDate);
-      setValue(entry.value.toString());
+      setValue(
+        entry.value ? entry.value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''
+      );
       setPaymentDate(entry.paymentDate || '');
       setInterestRate(entry.interestRate.toString());
     }
   }, [entry]);
 
+  const handleValueBlur = () => {
+    if (value.trim()) {
+      const parsed = parseCurrencyInput(value);
+      if (parsed > 0) {
+        setValue(
+          parsed.toLocaleString('pt-BR', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })
+        );
+      }
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const numValue = parseFloat(value);
-    const numInterestRate = parseFloat(interestRate) || 0;
+    const numValue = parseCurrencyInput(value);
+    const numInterestRate = parseCurrencyInput(interestRate) || 0;
 
     if (!favorecidoSelect) {
       alert('Selecione um favorecido.');
@@ -69,14 +88,14 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
       const s = suppliers.find((sup) => sup.id === id);
       if (s) {
         favorecidoName = s.name;
-        favorecidoType = 'Fornecedor';
+        favorecidoType = getTipoFavorecido(s.name, employees, favorecidoSelect);
       }
     } else if (favorecidoSelect.startsWith('func-')) {
       const id = parseInt(favorecidoSelect.replace('func-', ''));
       const emp = employees.find((e) => e.id === id);
       if (emp) {
         favorecidoName = emp.name;
-        favorecidoType = 'Funcionário';
+        favorecidoType = getTipoFavorecido(emp.name, employees, favorecidoSelect);
       }
     }
 
@@ -196,11 +215,12 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
                 Valor (R$) <span className="text-rose-500">*</span>
               </label>
               <input
-                type="number"
-                step="0.01"
-                min="0.01"
+                type="text"
+                inputMode="decimal"
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
+                onBlur={handleValueBlur}
+                placeholder="Ex: 1.950,00 ou 1950"
                 className="w-full px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none h-7.5 font-mono"
                 required
               />
@@ -227,12 +247,11 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
                 Taxa de Juros (%) (Mensal)
               </label>
               <input
-                type="number"
-                step="0.1"
-                min="0"
-                max="100"
+                type="text"
+                inputMode="decimal"
                 value={interestRate}
                 onChange={(e) => setInterestRate(e.target.value)}
+                placeholder="Ex: 2.5 ou 2,5"
                 className="w-full px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none h-7.5 font-mono"
               />
             </div>
