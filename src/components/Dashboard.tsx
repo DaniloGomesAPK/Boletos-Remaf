@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { CalculatedEntry, EntitySummary, Supplier, Employee, DocumentType } from '../types';
+import { CalculatedEntry, EntitySummary, Supplier, Employee } from '../types';
 import { formatBRL, calculateSummaries, MONTHS_PT, getMonthYearFromDateStr } from '../utils/calculations';
 import {
   AlertTriangle,
@@ -12,7 +12,6 @@ import {
   Truck,
   RotateCcw,
   BarChart3,
-  PieChart as PieChartIcon,
   TrendingUp,
   Award,
 } from 'lucide-react';
@@ -25,8 +24,6 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  PieChart,
-  Pie,
   Cell,
 } from 'recharts';
 
@@ -338,40 +335,38 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
     return result;
   }, [entries, filterMode, selectedMonth, selectedYear, currentMonthNum, currentYearNum]);
 
-  // CHART 2: Distribuição por Tipo de Documento
-  const chartDocTypeData = useMemo(() => {
-    const docTypeMap: Record<DocumentType, number> = {
-      Boleto: 0,
-      'Nota Fiscal': 0,
-      Adiantamento: 0,
-      Pagamento: 0,
-      Outros: 0,
-    };
+// CHART 2: Valor Gasto com os Funcionários
+  const chartEmployeeExpensesData = useMemo(() => {
+    const empEntries = filteredEntriesForPeriod.filter((e) => e.favorecidoType === 'Funcionário');
 
-    filteredEntriesForPeriod.forEach((e) => {
-      const typeKey = e.docType || 'Outros';
-      docTypeMap[typeKey] = (docTypeMap[typeKey] || 0) + e.totalWithInterest;
+    const empMap: Record<string, { name: string; paid: number; pending: number; total: number }> = {};
+
+    empEntries.forEach((e) => {
+      const name = e.favorecidoName || 'Outro Funcionário';
+      if (!empMap[name]) {
+        empMap[name] = { name, paid: 0, pending: 0, total: 0 };
+      }
+      if (e.status === 'Pago') {
+        empMap[name].paid += e.totalWithInterest;
+      } else {
+        empMap[name].pending += e.totalWithInterest;
+      }
+      empMap[name].total += e.totalWithInterest;
     });
 
-    const totalPeriodVal = Object.values(docTypeMap).reduce((a, b) => a + b, 0);
-
-    const COLORS_DOCS: Record<DocumentType, string> = {
-      Boleto: '#6366f1', // Indigo
-      'Nota Fiscal': '#06b6d4', // Cyan
-      Adiantamento: '#f59e0b', // Amber
-      Pagamento: '#10b981', // Emerald
-      Outros: '#64748b', // Slate
-    };
-
-    return Object.entries(docTypeMap)
-      .map(([name, value]) => ({
-        name: name as DocumentType,
-        value: Math.round(value * 100) / 100,
-        percent: totalPeriodVal > 0 ? ((value / totalPeriodVal) * 100).toFixed(1) : '0',
-        color: COLORS_DOCS[name as DocumentType] || '#94a3b8',
+    return Object.values(empMap)
+      .map((item) => ({
+        name: item.name,
+        'Pago': Math.round(item.paid * 100) / 100,
+        'Pendente': Math.round(item.pending * 100) / 100,
+        total: Math.round(item.total * 100) / 100,
       }))
-      .filter((d) => d.value > 0);
+      .sort((a, b) => b.total - a.total);
   }, [filteredEntriesForPeriod]);
+
+  const totalEmployeeExpense = useMemo(() => {
+    return chartEmployeeExpensesData.reduce((acc, item) => acc + item.total, 0);
+  }, [chartEmployeeExpensesData]);
 
   // CHART 3: Top 5 Fornecedores / Funcionários
   const chartTopEntitiesData = useMemo(() => {
@@ -855,39 +850,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
           </div>
         </div>
 
-        {/* CHART 2: Distribuição por Tipo de Documento */}
+        {/* CHART 2: Valor Gasto com os Funcionários */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-3.5 shadow-2xs space-y-3">
           <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
             <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
-              <PieChartIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              Distribuição por Tipo de Documento ({periodLabel})
+              <UserCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              Valor Gasto com Funcionários ({periodLabel})
             </h3>
-            <span className="text-[10px] text-slate-500 font-mono">Total BRL</span>
+            <span className="text-[10px] text-blue-600 dark:text-blue-400 font-mono font-bold">
+              Total: {formatBRL(totalEmployeeExpense)}
+            </span>
           </div>
 
-          {chartDocTypeData.length === 0 ? (
+          {chartEmployeeExpensesData.length === 0 ? (
             <div className="h-56 flex items-center justify-center text-xs text-slate-500">
-              Sem lançamentos no período selecionado.
+              Nenhum gasto com funcionário registrado no período selecionado.
             </div>
           ) : (
-            <div className="h-56 w-full flex items-center justify-center">
+            <div className="h-56 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={chartDocTypeData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={45}
-                    outerRadius={75}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {chartDocTypeData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
+                <BarChart data={chartEmployeeExpensesData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                  <YAxis
+                    tick={{ fontSize: 10 }}
+                    tickFormatter={(val) => `R$${val}`}
+                  />
                   <Tooltip
-                    formatter={(val: unknown) => [formatBRL(Number(val) || 0), 'Valor Total']}
+                    formatter={(val: unknown) => [formatBRL(Number(val) || 0), '']}
                     contentStyle={{
                       backgroundColor: '#1e293b',
                       borderColor: '#334155',
@@ -896,8 +886,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
                       fontSize: '12px',
                     }}
                   />
-                  <Legend wrapperStyle={{ fontSize: '11px' }} />
-                </PieChart>
+                  <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '4px' }} />
+                  <Bar dataKey="Pago" fill="#10b981" stackId="a" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="Pendente" fill="#3b82f6" stackId="a" radius={[4, 4, 0, 0]} />
+                </BarChart>
               </ResponsiveContainer>
             </div>
           )}

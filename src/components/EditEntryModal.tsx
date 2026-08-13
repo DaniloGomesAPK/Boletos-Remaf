@@ -22,7 +22,20 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
 }) => {
   if (!isOpen || !entry) return null;
 
-  const [favorecidoSelect, setFavorecidoSelect] = useState(entry.favorecidoId);
+  const getInitialFavorecidoSelect = (favId?: string, dType?: string) => {
+    if (!favId) return '';
+    if (favId.startsWith('func-')) {
+      if (favId.endsWith('-pagamento') || favId.endsWith('-adiantamento')) {
+        return favId;
+      }
+      return dType === 'Adiantamento' ? `${favId}-adiantamento` : `${favId}-pagamento`;
+    }
+    return favId;
+  };
+
+  const [favorecidoSelect, setFavorecidoSelect] = useState(() =>
+    getInitialFavorecidoSelect(entry.favorecidoId, entry.docType)
+  );
   const [docType, setDocType] = useState<DocumentType>(entry.docType);
   const [nfNumber, setNfNumber] = useState(entry.nfNumber || '');
   const [dueDate, setDueDate] = useState(entry.dueDate);
@@ -32,9 +45,12 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
   const [paymentDate, setPaymentDate] = useState(entry.paymentDate || '');
   const [interestRate, setInterestRate] = useState(entry.interestRate.toString());
 
+  const sortedSuppliers = [...suppliers].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  const sortedEmployees = [...employees].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
   useEffect(() => {
     if (entry) {
-      setFavorecidoSelect(entry.favorecidoId);
+      setFavorecidoSelect(getInitialFavorecidoSelect(entry.favorecidoId, entry.docType));
       setDocType(entry.docType);
       setNfNumber(entry.nfNumber || '');
       setDueDate(entry.dueDate);
@@ -45,6 +61,15 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
       setInterestRate(entry.interestRate.toString());
     }
   }, [entry]);
+
+  const handleFavorecidoChange = (val: string) => {
+    setFavorecidoSelect(val);
+    if (val.endsWith('-pagamento')) {
+      setDocType('Pagamento');
+    } else if (val.endsWith('-adiantamento')) {
+      setDocType('Adiantamento');
+    }
+  };
 
   const handleValueBlur = () => {
     if (value.trim()) {
@@ -84,14 +109,15 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
     let favorecidoType: 'Fornecedor' | 'Funcionário' = 'Fornecedor';
 
     if (favorecidoSelect.startsWith('forn-')) {
-      const id = parseInt(favorecidoSelect.replace('forn-', ''));
+      const id = parseInt(favorecidoSelect.replace('forn-', ''), 10);
       const s = suppliers.find((sup) => sup.id === id);
       if (s) {
         favorecidoName = s.name;
         favorecidoType = getTipoFavorecido(s.name, employees, favorecidoSelect);
       }
     } else if (favorecidoSelect.startsWith('func-')) {
-      const id = parseInt(favorecidoSelect.replace('func-', ''));
+      const cleanIdStr = favorecidoSelect.replace('func-', '').replace('-pagamento', '').replace('-adiantamento', '');
+      const id = parseInt(cleanIdStr, 10);
       const emp = employees.find((e) => e.id === id);
       if (emp) {
         favorecidoName = emp.name;
@@ -139,21 +165,28 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
             </label>
             <select
               value={favorecidoSelect}
-              onChange={(e) => setFavorecidoSelect(e.target.value)}
+              onChange={(e) => handleFavorecidoChange(e.target.value)}
               className="w-full px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none h-7.5"
               required
             >
               <optgroup label="Fornecedores">
-                {suppliers.map((s) => (
+                {sortedSuppliers.map((s) => (
                   <option key={`forn-${s.id}`} value={`forn-${s.id}`}>
                     [F] {s.name}
                   </option>
                 ))}
               </optgroup>
-              <optgroup label="Funcionários">
-                {employees.map((emp) => (
-                  <option key={`func-${emp.id}`} value={`func-${emp.id}`}>
-                    [Func] {emp.name} ({emp.paymentType})
+              <optgroup label="Funcionários - Pagamentos">
+                {sortedEmployees.map((emp) => (
+                  <option key={`func-${emp.id}-pagamento`} value={`func-${emp.id}-pagamento`}>
+                    [Func] {emp.name} - Pagamento
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Funcionários - Adiantamentos">
+                {sortedEmployees.map((emp) => (
+                  <option key={`func-${emp.id}-adiantamento`} value={`func-${emp.id}-adiantamento`}>
+                    [Func] {emp.name} - Adiantamento
                   </option>
                 ))}
               </optgroup>
