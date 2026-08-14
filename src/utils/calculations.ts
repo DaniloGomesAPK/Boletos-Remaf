@@ -246,6 +246,7 @@ export function calculateSummaries(
     summaries.push({
       name: emp.name,
       type: 'Funcionário',
+      paymentType: emp.paymentType === 'Adiantamento' ? 'Adiantamento' : 'Pagamento',
       countPaid,
       valuePaid,
       countOverdue,

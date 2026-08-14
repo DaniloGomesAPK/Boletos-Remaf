@@ -718,7 +718,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
                               : 'bg-blue-200 text-blue-900 dark:bg-blue-900 dark:text-blue-200'
                           }`}
                         >
-                          {isSupplier ? 'Fornecedor' : 'Funcionário'}
+                          {isSupplier ? 'Fornecedor' : (item.paymentType || 'Pagamento')}
                         </span>
                       </td>
 

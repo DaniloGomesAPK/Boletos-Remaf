@@ -41,9 +41,9 @@ export interface CalculatedEntry extends Entry {
 export interface EntitySummary {
   name: string;
   type: EntityType;
+  paymentType?: PaymentType;
   countPaid: number;
-  valuePaid: number;
-  countOverdue: number;
+  valuePaid: number;countOverdue: number;
   valueOverdue: number;
   countToPay: number;
   valueToPay: number;

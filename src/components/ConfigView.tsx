@@ -343,7 +343,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
                                   : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-300'
                               }`}
                             >
-                              {emp.paymentType}
+                              {emp.paymentType === 'Adiantamento' ? 'Adiantamento' : 'Pagamento'}
                             </span>
                           )}
                         </td>

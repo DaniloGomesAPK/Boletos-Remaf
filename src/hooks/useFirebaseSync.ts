@@ -102,7 +102,7 @@ export function useFirebaseSync({
             return {
               id: Number(data.id || d.id),
               name: data.name || '',
-              paymentType: data.paymentType || 'Mensalista',
+              paymentType: data.paymentType === 'Adiantamento' ? 'Adiantamento' : 'Pagamento',
             };
           });
           fetchedEmployees.sort((a, b) => a.id - b.id);
