@@ -10,7 +10,6 @@ import {
   query,
   where,
   onSnapshot,
-  getDocs,
 } from '../lib/firebase';
 import { Entry, Supplier, Employee, IncomeEntry } from '../types';
 
@@ -45,14 +44,14 @@ export function useFirebaseSync({
     return saved ? new Date(saved) : null;
   });
 
-  // Track if initial snapshot has resolved for this session
+  // Track if initial snapshot has resolved for this session to avoid overwriting remote data
   const hasInitializedRef = useRef<boolean>(false);
 
   // Network online/offline listener
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      showToast('Conexão restabelecida. Sincronizando dados...', 'success');
+      showToast('Conexão restabelecida. Sincronização em tempo real ativa!', 'success');
     };
     const handleOffline = () => {
       setIsOnline(false);
@@ -75,7 +74,7 @@ export function useFirebaseSync({
     localStorage.setItem('cap_last_synced_at', now.toISOString());
   }, []);
 
-  // 1. Real-time Firestore sync with onSnapshot listeners
+  // Real-time Firestore Listeners with onSnapshot (instant cross-device sync)
   useEffect(() => {
     if (!user) {
       hasInitializedRef.current = false;
@@ -85,10 +84,9 @@ export function useFirebaseSync({
     const uid = user.uid;
     setIsSyncing(true);
 
-    // Track user meta to know if user already initialized cloud data
     const userMetaDocRef = doc(db, 'users', uid);
 
-    // 1. Listen to ENTRIES collection
+    // 1. Real-time onSnapshot listener for ENTRIES (Contas a Pagar)
     const qEntries = query(collection(db, 'entries'), where('userId', '==', uid));
     const unsubEntries = onSnapshot(
       qEntries,
@@ -112,27 +110,28 @@ export function useFirebaseSync({
               interestRate: Number(data.interestRate || 0),
             };
           });
+          // Sort newest ID first
           fetchedEntries.sort((a, b) => b.id - a.id);
           setRawEntries(fetchedEntries);
         } else if (!hasInitializedRef.current && rawEntries.length > 0) {
-          // If Firestore is empty on very first load of this user, seed it with current local entries
+          // Initial seed to cloud if user has local items and cloud is completely empty
           rawEntries.forEach((entry) => {
             const docRef = doc(db, 'entries', `${uid}_entry_${entry.id}`);
             setDoc(docRef, { ...entry, userId: uid, updatedAt: new Date().toISOString() }, { merge: true }).catch(console.error);
           });
           setDoc(userMetaDocRef, { email: user.email, initializedAt: new Date().toISOString() }, { merge: true }).catch(console.error);
         } else if (hasInitializedRef.current && snapshot.empty) {
-          // Remote emptied by user
+          // If remote was cleared by user on another device
           setRawEntries([]);
         }
       },
       (err) => {
         setIsSyncing(false);
-        console.warn('Firestore Entries Snapshot error:', err);
+        console.warn('Erro no onSnapshot de Lançamentos:', err);
       }
     );
 
-    // 2. Listen to SUPPLIERS collection
+    // 2. Real-time onSnapshot listener for SUPPLIERS (Fornecedores)
     const qSuppliers = query(collection(db, 'suppliers'), where('userId', '==', uid));
     const unsubSuppliers = onSnapshot(
       qSuppliers,
@@ -157,10 +156,10 @@ export function useFirebaseSync({
           setSuppliers([]);
         }
       },
-      (err) => console.warn('Firestore Suppliers Snapshot error:', err)
+      (err) => console.warn('Erro no onSnapshot de Fornecedores:', err)
     );
 
-    // 3. Listen to EMPLOYEES collection
+    // 3. Real-time onSnapshot listener for EMPLOYEES (Funcionários)
     const qEmployees = query(collection(db, 'employees'), where('userId', '==', uid));
     const unsubEmployees = onSnapshot(
       qEmployees,
@@ -186,10 +185,10 @@ export function useFirebaseSync({
           setEmployees([]);
         }
       },
-      (err) => console.warn('Firestore Employees Snapshot error:', err)
+      (err) => console.warn('Erro no onSnapshot de Funcionários:', err)
     );
 
-    // 4. Listen to INCOMES collection
+    // 4. Real-time onSnapshot listener for INCOMES (Entradas Financeiras)
     const qIncomes = query(collection(db, 'incomes'), where('userId', '==', uid));
     const unsubIncomes = onSnapshot(
       qIncomes,
@@ -217,62 +216,21 @@ export function useFirebaseSync({
           setIncomes([]);
         }
 
-        // Mark as initialized once all listeners set up
+        // Mark as initialized once all onSnapshot listeners are attached
         hasInitializedRef.current = true;
       },
-      (err) => console.warn('Firestore Incomes Snapshot error:', err)
+      (err) => console.warn('Erro no onSnapshot de Entradas:', err)
     );
-
-    // 5. Visibility / Window Focus Refresh (for instant sync when user unlocks iPhone or switches back to tab)
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && user) {
-        setIsSyncing(true);
-        // Force a touch on the connection
-        getDocs(query(collection(db, 'entries'), where('userId', '==', uid)))
-          .then((snap) => {
-            setIsSyncing(false);
-            updateSyncTimestamp();
-            if (!snap.empty) {
-              const freshEntries: Entry[] = snap.docs.map((d) => {
-                const data = d.data();
-                return {
-                  id: Number(data.id ?? d.id),
-                  favorecidoId: data.favorecidoId || '',
-                  favorecidoName: data.favorecidoName || '',
-                  favorecidoType: data.favorecidoType || 'Fornecedor',
-                  docType: data.docType || 'Boleto',
-                  nfNumber: data.nfNumber || '',
-                  dueDate: data.dueDate || '',
-                  value: Number(data.value || 0),
-                  paymentDate: data.paymentDate || '',
-                  interestRate: Number(data.interestRate || 0),
-                };
-              });
-              freshEntries.sort((a, b) => b.id - a.id);
-              setRawEntries(freshEntries);
-            }
-          })
-          .catch((err) => {
-            setIsSyncing(false);
-            console.warn('Visibility refresh error:', err);
-          });
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleVisibilityChange);
 
     return () => {
       unsubEntries();
       unsubSuppliers();
       unsubEmployees();
       unsubIncomes();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleVisibilityChange);
     };
   }, [user]);
 
-  // Helper functions to write to Firestore in real-time
+  // Real-time write functions to update Firestore documents
   const saveEntryToFirestore = async (entry: Entry) => {
     if (!user) return;
     setIsSyncing(true);
@@ -385,7 +343,7 @@ export function useFirebaseSync({
     }
   };
 
-  // Force manual sync on demand
+  // Push full local state to Firestore
   const forceManualSync = async () => {
     if (!user) {
       showToast('Faça login para sincronizar com a nuvem.', 'error');
@@ -394,68 +352,31 @@ export function useFirebaseSync({
     setIsSyncing(true);
     try {
       const uid = user.uid;
-      const [snapEntries, snapSuppliers, snapEmployees, snapIncomes] = await Promise.all([
-        getDocs(query(collection(db, 'entries'), where('userId', '==', uid))),
-        getDocs(query(collection(db, 'suppliers'), where('userId', '==', uid))),
-        getDocs(query(collection(db, 'employees'), where('userId', '==', uid))),
-        getDocs(query(collection(db, 'incomes'), where('userId', '==', uid))),
-      ]);
-
-      if (!snapEntries.empty) {
-        const fetched = snapEntries.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: Number(data.id ?? d.id),
-            favorecidoId: data.favorecidoId || '',
-            favorecidoName: data.favorecidoName || '',
-            favorecidoType: data.favorecidoType || 'Fornecedor',
-            docType: data.docType || 'Boleto',
-            nfNumber: data.nfNumber || '',
-            dueDate: data.dueDate || '',
-            value: Number(data.value || 0),
-            paymentDate: data.paymentDate || '',
-            interestRate: Number(data.interestRate || 0),
-          } as Entry;
-        });
-        fetched.sort((a, b) => b.id - a.id);
-        setRawEntries(fetched);
+      // Sync entries
+      for (const entry of rawEntries) {
+        const docRef = doc(db, 'entries', `${uid}_entry_${entry.id}`);
+        await setDoc(docRef, { ...entry, userId: uid, updatedAt: new Date().toISOString() }, { merge: true });
       }
-
-      if (!snapSuppliers.empty) {
-        const fetched = snapSuppliers.docs.map((d) => ({
-          id: Number(d.data().id ?? d.id),
-          name: d.data().name || '',
-        }));
-        fetched.sort((a, b) => a.id - b.id);
-        setSuppliers(fetched);
+      // Sync suppliers
+      for (const sup of suppliers) {
+        const docRef = doc(db, 'suppliers', `${uid}_sup_${sup.id}`);
+        await setDoc(docRef, { ...sup, userId: uid, updatedAt: new Date().toISOString() }, { merge: true });
       }
-
-      if (!snapEmployees.empty) {
-        const fetched = snapEmployees.docs.map((d) => ({
-          id: Number(d.data().id ?? d.id),
-          name: d.data().name || '',
-          paymentType: d.data().paymentType === 'Adiantamento' ? 'Adiantamento' : ('Pagamento' as const),
-        }));
-        fetched.sort((a, b) => a.id - b.id);
-        setEmployees(fetched);
+      // Sync employees
+      for (const emp of employees) {
+        const docRef = doc(db, 'employees', `${uid}_emp_${emp.id}`);
+        await setDoc(docRef, { ...emp, userId: uid, updatedAt: new Date().toISOString() }, { merge: true });
       }
-
-      if (!snapIncomes.empty) {
-        const fetched = snapIncomes.docs.map((d) => ({
-          id: Number(d.data().id ?? d.id),
-          companyName: d.data().companyName || '',
-          value: Number(d.data().value || 0),
-          date: d.data().date || '',
-          description: d.data().description || '',
-        }));
-        fetched.sort((a, b) => b.id - a.id);
-        setIncomes(fetched);
+      // Sync incomes
+      for (const inc of incomes) {
+        const docRef = doc(db, 'incomes', `${uid}_inc_${inc.id}`);
+        await setDoc(docRef, { ...inc, userId: uid, updatedAt: new Date().toISOString() }, { merge: true });
       }
 
       updateSyncTimestamp();
-      showToast('Sincronização em nuvem concluída com sucesso!', 'success');
+      showToast('Sincronização em tempo real atualizada com sucesso!', 'success');
     } catch (err) {
-      console.error('Erro na sincronização manual:', err);
+      console.error('Erro ao sincronizar com o Firestore:', err);
       showToast('Erro ao sincronizar dados com o servidor.', 'error');
     } finally {
       setIsSyncing(false);
