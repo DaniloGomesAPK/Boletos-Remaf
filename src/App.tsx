@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Supplier, Employee, Entry, CalculatedEntry, PaymentType, IncomeEntry } from './types';
-import { INITIAL_SUPPLIERS, INITIAL_EMPLOYEES, INITIAL_ENTRIES, INITIAL_INCOMES } from './data/initialData';
 import { calculateEntryDetails, exportToCSV, getTodayDateString } from './utils/calculations';
 import { Navbar } from './components/Navbar';
 import { Dashboard } from './components/Dashboard';
@@ -14,33 +13,17 @@ import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 function AppContent() {
   const { user, loading } = useAuth();
-  const [isGuestMode, setIsGuestMode] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'entries' | 'config'>('dashboard');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('theme_preference') === 'dark';
   });
 
-  // LocalStorage State Initialization
-  const [suppliers, setSuppliers] = useState<Supplier[]>(() => {
-    const saved = localStorage.getItem('cap_suppliers');
-    return saved ? JSON.parse(saved) : INITIAL_SUPPLIERS;
-  });
-
-  const [employees, setEmployees] = useState<Employee[]>(() => {
-    const saved = localStorage.getItem('cap_employees');
-    return saved ? JSON.parse(saved) : INITIAL_EMPLOYEES;
-  });
-
-  const [rawEntries, setRawEntries] = useState<Entry[]>(() => {
-    const saved = localStorage.getItem('cap_entries');
-    return saved ? JSON.parse(saved) : INITIAL_ENTRIES;
-  });
-
-  const [incomes, setIncomes] = useState<IncomeEntry[]>(() => {
-    const saved = localStorage.getItem('cap_incomes');
-    return saved ? JSON.parse(saved) : INITIAL_INCOMES;
-  });
+  // State populated EXCLUSIVELY from Cloud Firestore via onSnapshot
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [rawEntries, setRawEntries] = useState<Entry[]>([]);
+  const [incomes, setIncomes] = useState<IncomeEntry[]>([]);
 
   // Notification Toast State
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -52,12 +35,11 @@ function AppContent() {
     }, 3500);
   };
 
-  // Firebase Firestore Real-time Sync
+  // Firebase Firestore Direct Real-time Sync
   const {
     isSyncing,
     isOnline,
     lastSyncedAt,
-    forceManualSync,
     saveEntryToFirestore,
     deleteEntryFromFirestore,
     saveSupplierToFirestore,
@@ -67,18 +49,14 @@ function AppContent() {
     saveIncomeToFirestore,
     deleteIncomeFromFirestore,
   } = useFirebaseSync({
-    rawEntries,
     setRawEntries,
-    suppliers,
     setSuppliers,
-    employees,
     setEmployees,
-    incomes,
     setIncomes,
     showToast,
   });
 
-  // Sync Dark Mode class on <html> element
+  // Dark Mode preference handling
   useEffect(() => {
     const root = document.documentElement;
     if (darkMode) {
@@ -90,42 +68,24 @@ function AppContent() {
     }
   }, [darkMode]);
 
-  // Sync state to LocalStorage as fallback
-  useEffect(() => {
-    localStorage.setItem('cap_suppliers', JSON.stringify(suppliers));
-  }, [suppliers]);
-
-  useEffect(() => {
-    localStorage.setItem('cap_employees', JSON.stringify(employees));
-  }, [employees]);
-
-  useEffect(() => {
-    localStorage.setItem('cap_entries', JSON.stringify(rawEntries));
-  }, [rawEntries]);
-
-  useEffect(() => {
-    localStorage.setItem('cap_incomes', JSON.stringify(incomes));
-  }, [incomes]);
-
-  // Dynamically calculate statuses, interest, and totals
+  // Dynamically calculate statuses, interest, and totals in memory
   const calculatedEntries: CalculatedEntry[] = useMemo(() => {
     const today = getTodayDateString();
     return rawEntries.map((e) => calculateEntryDetails(e, today));
   }, [rawEntries]);
 
-  // Entry Operations
-  const handleAddEntry = (newEntryData: Omit<Entry, 'id'>) => {
+  // Entry Operations (Direct Cloud Firestore)
+  const handleAddEntry = async (newEntryData: Omit<Entry, 'id'>) => {
     const maxId = rawEntries.reduce((max, e) => Math.max(max, e.id), 0);
     const newEntry: Entry = {
       ...newEntryData,
-      id: maxId + 1,
+      id: maxId > 0 ? maxId + 1 : Date.now(),
     };
-    setRawEntries((prev) => [newEntry, ...prev]);
-    saveEntryToFirestore(newEntry);
-    showToast('Lançamento adicionado com sucesso!');
+    await saveEntryToFirestore(newEntry);
+    showToast('Boleto/Lançamento salvo no Firestore com sucesso!');
   };
 
-  const handleUpdateEntry = (updated: CalculatedEntry) => {
+  const handleUpdateEntry = async (updated: CalculatedEntry) => {
     const raw: Entry = {
       id: updated.id,
       favorecidoId: updated.favorecidoId,
@@ -138,119 +98,97 @@ function AppContent() {
       paymentDate: updated.paymentDate,
       interestRate: updated.interestRate,
     };
-    setRawEntries((prev) =>
-      prev.map((e) => (e.id === updated.id ? { ...raw } : e))
-    );
-    saveEntryToFirestore(raw);
-    showToast('Lançamento atualizado com sucesso!');
+    await saveEntryToFirestore(raw);
+    showToast('Lançamento atualizado no Firestore com sucesso!');
   };
 
-  const handleDeleteEntry = (id: number) => {
-    setRawEntries((prev) => prev.filter((e) => e.id !== id));
-    deleteEntryFromFirestore(id);
-    showToast('Lançamento excluído com sucesso.');
+  const handleDeleteEntry = async (id: number) => {
+    await deleteEntryFromFirestore(id);
+    showToast('Lançamento excluído do Firestore.');
   };
 
-  const handleDeleteMultipleEntries = (ids: number[]) => {
-    const idSet = new Set(ids);
-    setRawEntries((prev) => prev.filter((e) => !idSet.has(e.id)));
-    ids.forEach((id) => deleteEntryFromFirestore(id));
-    showToast(`${ids.length} lançamentos excluídos com sucesso.`);
+  const handleDeleteMultipleEntries = async (ids: number[]) => {
+    for (const id of ids) {
+      await deleteEntryFromFirestore(id);
+    }
+    showToast(`${ids.length} lançamentos excluídos do Firestore.`);
   };
 
-  const handleQuickTogglePaid = (id: number) => {
+  const handleQuickTogglePaid = async (id: number) => {
+    const target = rawEntries.find((e) => e.id === id);
+    if (!target) return;
     const todayStr = getTodayDateString();
-    setRawEntries((prev) =>
-      prev.map((e) => {
-        if (e.id === id) {
-          const isCurrentlyPaid = Boolean(e.paymentDate && e.paymentDate.trim() !== '');
-          const updated = {
-            ...e,
-            paymentDate: isCurrentlyPaid ? '' : todayStr,
-          };
-          saveEntryToFirestore(updated);
-          return updated;
-        }
-        return e;
-      })
-    );
-    showToast('Status de pagamento alterado!');
+    const isCurrentlyPaid = Boolean(target.paymentDate && target.paymentDate.trim() !== '');
+    const updated: Entry = {
+      ...target,
+      paymentDate: isCurrentlyPaid ? '' : todayStr,
+    };
+    await saveEntryToFirestore(updated);
+    showToast(isCurrentlyPaid ? 'Status alterado para Em Aberto.' : 'Pagamento registrado com sucesso!');
   };
 
-  // Supplier Operations
-  const handleAddSupplier = (name: string) => {
+  // Supplier Operations (Direct Cloud Firestore)
+  const handleAddSupplier = async (name: string) => {
     const maxId = suppliers.reduce((max, s) => Math.max(max, s.id), 0);
-    const newSup: Supplier = { id: maxId + 1, name };
-    setSuppliers((prev) => [...prev, newSup]);
-    saveSupplierToFirestore(newSup);
-    showToast(`Fornecedor "${name}" cadastrado!`);
+    const newSup: Supplier = { id: maxId > 0 ? maxId + 1 : Date.now(), name };
+    await saveSupplierToFirestore(newSup);
+    showToast(`Fornecedor "${name}" salvo no Firestore!`);
   };
 
-  const handleUpdateSupplier = (id: number, name: string) => {
+  const handleUpdateSupplier = async (id: number, name: string) => {
     const updated = { id, name };
-    setSuppliers((prev) =>
-      prev.map((s) => (s.id === id ? updated : s))
-    );
-    saveSupplierToFirestore(updated);
-    showToast('Fornecedor atualizado!');
+    await saveSupplierToFirestore(updated);
+    showToast('Fornecedor atualizado no Firestore!');
   };
 
-  const handleDeleteSupplier = (id: number) => {
-    if (confirm('Tem certeza que deseja excluir este fornecedor?')) {
-      setSuppliers((prev) => prev.filter((s) => s.id !== id));
-      deleteSupplierFromFirestore(id);
-      showToast('Fornecedor removido.');
+  const handleDeleteSupplier = async (id: number) => {
+    if (confirm('Tem certeza que deseja excluir este fornecedor do Firestore?')) {
+      await deleteSupplierFromFirestore(id);
+      showToast('Fornecedor removido do Firestore.');
     }
   };
 
-  // Employee Operations
-  const handleAddEmployee = (name: string, paymentType: PaymentType) => {
+  // Employee Operations (Direct Cloud Firestore)
+  const handleAddEmployee = async (name: string, paymentType: PaymentType) => {
     const maxId = employees.reduce((max, emp) => Math.max(max, emp.id), 0);
-    const newEmp: Employee = { id: maxId + 1, name, paymentType };
-    setEmployees((prev) => [...prev, newEmp]);
-    saveEmployeeToFirestore(newEmp);
-    showToast(`Funcionário "${name}" cadastrado!`);
+    const newEmp: Employee = { id: maxId > 0 ? maxId + 1 : Date.now(), name, paymentType };
+    await saveEmployeeToFirestore(newEmp);
+    showToast(`Funcionário "${name}" salvo no Firestore!`);
   };
 
-  const handleUpdateEmployee = (id: number, name: string, paymentType: PaymentType) => {
+  const handleUpdateEmployee = async (id: number, name: string, paymentType: PaymentType) => {
     const updated = { id, name, paymentType };
-    setEmployees((prev) =>
-      prev.map((emp) => (emp.id === id ? updated : emp))
-    );
-    saveEmployeeToFirestore(updated);
-    showToast('Funcionário atualizado!');
+    await saveEmployeeToFirestore(updated);
+    showToast('Funcionário atualizado no Firestore!');
   };
 
-  const handleDeleteEmployee = (id: number) => {
-    if (confirm('Tem certeza que deseja excluir este funcionário?')) {
-      setEmployees((prev) => prev.filter((emp) => emp.id !== id));
-      deleteEmployeeFromFirestore(id);
-      showToast('Funcionário removido.');
+  const handleDeleteEmployee = async (id: number) => {
+    if (confirm('Tem certeza que deseja excluir este funcionário do Firestore?')) {
+      await deleteEmployeeFromFirestore(id);
+      showToast('Funcionário removido do Firestore.');
     }
   };
 
-  // Income Operations
-  const handleAddIncome = (newIncomeData: Omit<IncomeEntry, 'id'>) => {
+  // Income Operations (Direct Cloud Firestore)
+  const handleAddIncome = async (newIncomeData: Omit<IncomeEntry, 'id'>) => {
     const maxId = incomes.reduce((max, inc) => Math.max(max, inc.id), 0);
     const newIncome: IncomeEntry = {
       ...newIncomeData,
-      id: maxId + 1,
+      id: maxId > 0 ? maxId + 1 : Date.now(),
     };
-    setIncomes((prev) => [newIncome, ...prev]);
-    saveIncomeToFirestore(newIncome);
-    showToast(`Entrada da empresa "${newIncome.companyName}" lançada!`);
+    await saveIncomeToFirestore(newIncome);
+    showToast(`Entrada da empresa "${newIncome.companyName}" salva no Firestore!`);
   };
 
-  const handleDeleteIncome = (id: number) => {
-    setIncomes((prev) => prev.filter((inc) => inc.id !== id));
-    deleteIncomeFromFirestore(id);
-    showToast('Entrada excluída com sucesso.');
+  const handleDeleteIncome = async (id: number) => {
+    await deleteIncomeFromFirestore(id);
+    showToast('Entrada excluída do Firestore.');
   };
 
-  // JSON Backup / Import / Export
+  // JSON Backup / Import / Export to Firestore
   const handleExportJSON = () => {
     const backupData = {
-      version: '1.1',
+      version: '2.0-cloud',
       exportedAt: new Date().toISOString(),
       suppliers,
       employees,
@@ -261,34 +199,42 @@ function AppContent() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `backup_contas_a_pagar_${getTodayDateString()}.json`;
+    link.download = `backup_firestore_contas_${getTodayDateString()}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     showToast('Backup JSON exportado com sucesso!');
   };
 
-  const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportJSON = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const parsed = JSON.parse(event.target?.result as string);
         if (parsed.suppliers && parsed.employees && parsed.entries) {
-          setSuppliers(parsed.suppliers);
-          setEmployees(parsed.employees);
-          setRawEntries(parsed.entries);
-          if (parsed.incomes && Array.isArray(parsed.incomes)) {
-            setIncomes(parsed.incomes);
+          showToast('Importando dados para o Cloud Firestore...', 'success');
+          // Write all to Firestore
+          if (Array.isArray(parsed.suppliers)) {
+            for (const s of parsed.suppliers) await saveSupplierToFirestore(s);
           }
-          showToast('Dados importados com sucesso!');
+          if (Array.isArray(parsed.employees)) {
+            for (const emp of parsed.employees) await saveEmployeeToFirestore(emp);
+          }
+          if (Array.isArray(parsed.entries)) {
+            for (const entry of parsed.entries) await saveEntryToFirestore(entry);
+          }
+          if (Array.isArray(parsed.incomes)) {
+            for (const inc of parsed.incomes) await saveIncomeToFirestore(inc);
+          }
+          showToast('Dados salvos no Cloud Firestore com sucesso!');
         } else {
           showToast('Formato de arquivo JSON inválido.', 'error');
         }
       } catch (err) {
-        showToast('Erro ao ler arquivo JSON.', 'error');
+        showToast('Erro ao ler ou importar arquivo JSON para o Firestore.', 'error');
       }
     };
     reader.readAsText(file);
@@ -300,23 +246,13 @@ function AppContent() {
     showToast('Relatório CSV exportado!');
   };
 
-  const handleRestoreSampleData = () => {
-    if (confirm('Restaurar os dados de exemplo pré-definidos? Os lançamentos atuais serão substituídos.')) {
-      setSuppliers(INITIAL_SUPPLIERS);
-      setEmployees(INITIAL_EMPLOYEES);
-      setRawEntries(INITIAL_ENTRIES);
-      setIncomes(INITIAL_INCOMES);
-      showToast('Dados de exemplo restaurados com sucesso!');
-    }
-  };
-
-  const handleClearAllData = () => {
-    if (confirm('⚠️ ATENÇÃO: Deseja REALMENTE apagar TODOS os lançamentos, entradas, fornecedores e funcionários?')) {
-      setSuppliers([]);
-      setEmployees([]);
-      setRawEntries([]);
-      setIncomes([]);
-      showToast('Todos os dados foram excluídos.', 'error');
+  const handleClearAllData = async () => {
+    if (confirm('⚠️ ATENÇÃO: Deseja REALMENTE apagar TODOS os lançamentos, receitas, fornecedores e funcionários do Firestore?')) {
+      for (const e of rawEntries) await deleteEntryFromFirestore(e.id);
+      for (const s of suppliers) await deleteSupplierFromFirestore(s.id);
+      for (const emp of employees) await deleteEmployeeFromFirestore(emp.id);
+      for (const inc of incomes) await deleteIncomeFromFirestore(inc.id);
+      showToast('Todos os dados foram excluídos do Firestore.', 'error');
     }
   };
 
@@ -334,13 +270,14 @@ function AppContent() {
           />
         </div>
         <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-2" />
-        <p className="text-xs text-slate-400 font-medium">Iniciando sistema financeiro...</p>
+        <p className="text-xs text-slate-400 font-medium">Carregando dados do Cloud Firestore...</p>
       </div>
     );
   }
 
-  if (!user && !isGuestMode) {
-    return <LoginView onBypassDemo={() => setIsGuestMode(true)} />;
+  // Force login view to ensure every interaction uses Firebase Auth and Firestore Cloud
+  if (!user) {
+    return <LoginView />;
   }
 
   return (
@@ -367,11 +304,9 @@ function AppContent() {
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onLogout={() => setIsGuestMode(false)}
         isSyncing={isSyncing}
         isOnline={isOnline}
         lastSyncedAt={lastSyncedAt}
-        onForceSync={forceManualSync}
       />
 
       {/* Auth Modal */}
@@ -419,13 +354,14 @@ function AppContent() {
             onExportJSON={handleExportJSON}
             onImportJSON={handleImportJSON}
             onExportCSV={handleExportCSV}
-            onRestoreSampleData={handleRestoreSampleData}
+            onRestoreSampleData={() => {
+              showToast('Para manter a integridade, use o cadastro direto de novos boletos.', 'error');
+            }}
             onClearAllData={handleClearAllData}
             onOpenAuthModal={() => setIsAuthModalOpen(true)}
             isSyncing={isSyncing}
             isOnline={isOnline}
             lastSyncedAt={lastSyncedAt}
-            onForceSync={forceManualSync}
           />
         )}
       </main>
@@ -433,7 +369,7 @@ function AppContent() {
       {/* Footer */}
       <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-2.5 mt-4">
         <div className="max-w-7xl mx-auto px-4 text-center text-[11px] text-slate-500 dark:text-slate-400">
-          Sistema de Contas a Pagar &copy; {new Date().getFullYear()} &bull; High Density UI &bull; Firebase Cloud Sync &bull; Controle Financeiro Integrado
+          Sistema de Contas a Pagar &copy; {new Date().getFullYear()} &bull; Google Cloud Firestore Realtime &bull; 100% Nuvem
         </div>
       </footer>
     </div>
