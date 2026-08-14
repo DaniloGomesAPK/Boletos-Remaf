@@ -24,17 +24,14 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 
-import firebaseConfigJson from '../../firebase-applet-config.json';
-
-// Firebase SDK Initialization with Environment Variables (VITE_FIREBASE_...)
 const firebaseConfig = {
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || (firebaseConfigJson as Record<string, string>)?.projectId || '',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || (firebaseConfigJson as Record<string, string>)?.appId || '',
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || (firebaseConfigJson as Record<string, string>)?.apiKey || '',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || (firebaseConfigJson as Record<string, string>)?.authDomain || '',
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || (firebaseConfigJson as Record<string, string>)?.firestoreDatabaseId || '',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || (firebaseConfigJson as Record<string, string>)?.storageBucket || '',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || (firebaseConfigJson as Record<string, string>)?.messagingSenderId || '',
+  apiKey: "AIzaSyDAbQ8XzFF8_Yedd2WPGh5b0VZskzhScAM",
+  authDomain: "boletos-remaf.firebaseapp.com",
+  projectId: "boletos-remaf",
+  storageBucket: "boletos-remaf.firebasestorage.app",
+  messagingSenderId: "982122465509",
+  appId: "1:982122465509:web:538b37761f3320fbe02c0c",
+  measurementId: "G-M1JVZQ1KLD"
 };
 
 let app: FirebaseApp;
@@ -45,14 +42,7 @@ if (!getApps().length) {
 }
 
 export const auth: Auth = getAuth(app);
-
-// Initialize Firestore (handles custom database ID if defined in VITE_FIREBASE_DATABASE_ID, otherwise uses default)
-const customDatabaseId = firebaseConfig.firestoreDatabaseId;
-export const db: Firestore =
-  customDatabaseId && customDatabaseId !== '(default)' && customDatabaseId !== 'undefined'
-    ? getFirestore(app, customDatabaseId)
-    : getFirestore(app);
-
+export const db: Firestore = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 
 export {
