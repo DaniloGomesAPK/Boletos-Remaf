@@ -54,6 +54,10 @@ function AppContent() {
 
   // Firebase Firestore Real-time Sync
   const {
+    isSyncing,
+    isOnline,
+    lastSyncedAt,
+    forceManualSync,
     saveEntryToFirestore,
     deleteEntryFromFirestore,
     saveSupplierToFirestore,
@@ -364,6 +368,10 @@ function AppContent() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onLogout={() => setIsGuestMode(false)}
+        isSyncing={isSyncing}
+        isOnline={isOnline}
+        lastSyncedAt={lastSyncedAt}
+        onForceSync={forceManualSync}
       />
 
       {/* Auth Modal */}
@@ -414,6 +422,10 @@ function AppContent() {
             onRestoreSampleData={handleRestoreSampleData}
             onClearAllData={handleClearAllData}
             onOpenAuthModal={() => setIsAuthModalOpen(true)}
+            isSyncing={isSyncing}
+            isOnline={isOnline}
+            lastSyncedAt={lastSyncedAt}
+            onForceSync={forceManualSync}
           />
         )}
       </main>

@@ -1,17 +1,34 @@
 import React from 'react';
-import { LayoutDashboard, FileSpreadsheet, Settings, LogOut, User as UserIcon, Cloud } from 'lucide-react';
+import {
+  LayoutDashboard,
+  FileSpreadsheet,
+  Settings,
+  LogOut,
+  User as UserIcon,
+  Cloud,
+  RefreshCw,
+  WifiOff,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface NavbarProps {
   activeTab: 'dashboard' | 'entries' | 'config';
   setActiveTab: (tab: 'dashboard' | 'entries' | 'config') => void;
   onLogout?: () => void;
+  isSyncing?: boolean;
+  isOnline?: boolean;
+  lastSyncedAt?: Date | null;
+  onForceSync?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
   onLogout,
+  isSyncing = false,
+  isOnline = true,
+  lastSyncedAt,
+  onForceSync,
 }) => {
   const { user, logoutUser } = useAuth();
 
@@ -24,6 +41,11 @@ export const Navbar: React.FC<NavbarProps> = ({
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const formatLastSync = (date: Date | null | undefined) => {
+    if (!date) return 'Em tempo real';
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
   return (
@@ -43,9 +65,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <h1 className="text-sm sm:text-base font-bold tracking-tight text-white leading-none truncate">
                   Contas a Pagar
                 </h1>
-                <p className="text-[10px] sm:text-[11px] text-slate-400 leading-tight mt-0.5 truncate">
-                  Gestão Financeira Integrada
-                </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <p className="text-[10px] sm:text-[11px] text-slate-400 leading-tight truncate">
+                    Gestão Financeira
+                  </p>
+                  {/* Real-time sync indicator dot */}
+                  <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
+                    <span className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-amber-400 animate-ping' : isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+                    <span className="hidden lg:inline">{isSyncing ? 'Sincronizando' : isOnline ? 'Sincronizado' : 'Offline'}</span>
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -88,8 +117,39 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             </nav>
 
-            {/* User Profile & Logout Button */}
+            {/* User Profile, Cloud Sync Button & Logout */}
             <div className="flex items-center gap-1.5 sm:gap-2">
+              {/* Cloud Sync Status Button */}
+              {user && onForceSync && (
+                <button
+                  onClick={onForceSync}
+                  disabled={isSyncing}
+                  className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-xs border transition-all cursor-pointer active:scale-95 ${
+                    !isOnline
+                      ? 'bg-rose-950/50 text-rose-300 border-rose-800'
+                      : isSyncing
+                      ? 'bg-amber-950/50 text-amber-300 border-amber-800'
+                      : 'bg-slate-800 hover:bg-slate-700 text-emerald-400 border-slate-700'
+                  }`}
+                  title={
+                    !isOnline
+                      ? 'Offline - Verifique sua conexão'
+                      : `Sincronização Cloud Ativa (Última: ${formatLastSync(lastSyncedAt)}). Clique para atualizar.`
+                  }
+                >
+                  {!isOnline ? (
+                    <WifiOff className="w-3.5 h-3.5 text-rose-400" />
+                  ) : isSyncing ? (
+                    <RefreshCw className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                  ) : (
+                    <Cloud className="w-3.5 h-3.5 text-emerald-400" />
+                  )}
+                  <span className="hidden xl:inline text-[11px] font-medium text-slate-200">
+                    {isSyncing ? 'Sincronizando...' : 'Nuvem Conectada'}
+                  </span>
+                </button>
+              )}
+
               {user ? (
                 <>
                   <div
@@ -102,7 +162,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <span className="text-[11px] font-medium max-w-[110px] truncate text-slate-200">
                       {user.email ? user.email.split('@')[0] : 'Usuário'}
                     </span>
-                    <Cloud className="w-3 h-3 text-emerald-400 shrink-0" />
                   </div>
 
                   <button
@@ -178,4 +237,3 @@ export const Navbar: React.FC<NavbarProps> = ({
     </>
   );
 };
-
