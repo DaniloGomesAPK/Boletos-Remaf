@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CalculatedEntry, DocumentType, Supplier, Employee } from '../types';
-import { getTipoFavorecido, parseCurrencyInput } from '../utils/calculations';
-import { X, Check } from 'lucide-react';
+import { getTipoFavorecido, parseCurrencyInput, formatBRL } from '../utils/calculations';
+import { X, Check, Trash2, AlertTriangle } from 'lucide-react';
 
 interface EditEntryModalProps {
   isOpen: boolean;
@@ -10,6 +10,7 @@ interface EditEntryModalProps {
   employees: Employee[];
   onClose: () => void;
   onSave: (updatedEntry: CalculatedEntry) => void;
+  onDelete?: (id: number) => void;
 }
 
 export const EditEntryModal: React.FC<EditEntryModalProps> = ({
@@ -19,8 +20,11 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
   employees,
   onClose,
   onSave,
+  onDelete,
 }) => {
   if (!isOpen || !entry) return null;
+
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const getInitialFavorecidoSelect = (favId?: string, dType?: string) => {
     if (!favId) return '';
@@ -290,22 +294,66 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
             </div>
           </div>
 
-          <div className="flex justify-end items-center gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold text-xs rounded transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs rounded shadow-2xs transition-colors"
-            >
-              <Check className="w-3.5 h-3.5" />
-              Salvar Alterações
-            </button>
-          </div>
+          {confirmDelete ? (
+            <div className="p-2.5 rounded-md bg-rose-50 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-850 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-rose-800 dark:text-rose-200 font-semibold text-xs">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>Confirmar exclusão deste lançamento de {formatBRL(entry.value)}?</span>
+              </div>
+              <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  className="px-2.5 py-1 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 text-slate-700 dark:text-slate-300 font-semibold text-[11px] rounded transition-colors"
+                >
+                  Não, voltar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onDelete) onDelete(entry.id);
+                    onClose();
+                  }}
+                  className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] rounded shadow-2xs transition-colors flex items-center gap-1"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Sim, Excluir
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+              <div>
+                {onDelete && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(true)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded text-xs font-semibold transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Excluir Lançamento
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold text-xs rounded transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs rounded shadow-2xs transition-colors"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Salvar Alterações
+                </button>
+              </div>
+            </div>
+          )}
         </form>
       </div>
     </div>

@@ -2,7 +2,7 @@ import type React from 'react';
 import { useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, collection, doc, setDoc, deleteDoc, query, where, onSnapshot } from '../lib/firebase';
-import { Entry, Supplier, Employee } from '../types';
+import { Entry, Supplier, Employee, IncomeEntry } from '../types';
 
 interface FirebaseSyncParams {
   rawEntries: Entry[];
@@ -11,6 +11,8 @@ interface FirebaseSyncParams {
   setSuppliers: React.Dispatch<React.SetStateAction<Supplier[]>>;
   employees: Employee[];
   setEmployees: React.Dispatch<React.SetStateAction<Employee[]>>;
+  incomes: IncomeEntry[];
+  setIncomes: React.Dispatch<React.SetStateAction<IncomeEntry[]>>;
   showToast: (msg: string, type?: 'success' | 'error') => void;
 }
 
@@ -21,6 +23,8 @@ export function useFirebaseSync({
   setSuppliers,
   employees,
   setEmployees,
+  incomes,
+  setIncomes,
   showToast,
 }: FirebaseSyncParams) {
   const { user } = useAuth();
@@ -117,10 +121,39 @@ export function useFirebaseSync({
       (err) => console.warn('Firestore Employees Snapshot error:', err)
     );
 
+    // Listen to INCOMES collection
+    const qIncomes = query(collection(db, 'incomes'), where('userId', '==', uid));
+    const unsubIncomes = onSnapshot(
+      qIncomes,
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const fetchedIncomes: IncomeEntry[] = snapshot.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: Number(data.id || d.id),
+              companyName: data.companyName || '',
+              value: Number(data.value || 0),
+              date: data.date || '',
+              description: data.description || '',
+            };
+          });
+          fetchedIncomes.sort((a, b) => b.id - a.id);
+          setIncomes(fetchedIncomes);
+        } else if (incomes.length > 0) {
+          incomes.forEach((inc) => {
+            const docRef = doc(db, 'incomes', `${uid}_inc_${inc.id}`);
+            setDoc(docRef, { ...inc, userId: uid }, { merge: true }).catch(console.error);
+          });
+        }
+      },
+      (err) => console.warn('Firestore Incomes Snapshot error:', err)
+    );
+
     return () => {
       unsubEntries();
       unsubSuppliers();
       unsubEmployees();
+      unsubIncomes();
     };
   }, [user]);
 
@@ -185,6 +218,26 @@ export function useFirebaseSync({
     }
   };
 
+  const saveIncomeToFirestore = async (income: IncomeEntry) => {
+    if (!user) return;
+    try {
+      const docRef = doc(db, 'incomes', `${user.uid}_inc_${income.id}`);
+      await setDoc(docRef, { ...income, userId: user.uid }, { merge: true });
+    } catch (err) {
+      console.error('Erro ao salvar entrada no Firestore:', err);
+    }
+  };
+
+  const deleteIncomeFromFirestore = async (incomeId: number) => {
+    if (!user) return;
+    try {
+      const docRef = doc(db, 'incomes', `${user.uid}_inc_${incomeId}`);
+      await deleteDoc(docRef);
+    } catch (err) {
+      console.error('Erro ao excluir entrada no Firestore:', err);
+    }
+  };
+
   return {
     saveEntryToFirestore,
     deleteEntryFromFirestore,
@@ -192,5 +245,7 @@ export function useFirebaseSync({
     deleteSupplierFromFirestore,
     saveEmployeeToFirestore,
     deleteEmployeeFromFirestore,
+    saveIncomeToFirestore,
+    deleteIncomeFromFirestore,
   };
 }

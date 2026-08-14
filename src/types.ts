@@ -43,10 +43,19 @@ export interface EntitySummary {
   type: EntityType;
   paymentType?: PaymentType;
   countPaid: number;
-  valuePaid: number;countOverdue: number;
+  valuePaid: number;
+  countOverdue: number;
   valueOverdue: number;
   countToPay: number;
   valueToPay: number;
   balanceDue: number; // Saldo Devedor
   accumulatedInterest: number; // Juros Acumulados
+}
+
+export interface IncomeEntry {
+  id: number;
+  companyName: string; // Nome da empresa
+  value: number; // Valor em R$
+  date: string; // YYYY-MM-DD
+  description?: string; // Observação ou número de documento
 }

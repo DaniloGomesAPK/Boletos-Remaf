@@ -1,4 +1,4 @@
-import { Supplier, Employee, Entry } from '../types';
+import { Supplier, Employee, Entry, IncomeEntry } from '../types';
 
 export const INITIAL_SUPPLIERS: Supplier[] = [
   { id: 1, name: 'TP Distribuidora' },
@@ -118,5 +118,36 @@ export const INITIAL_ENTRIES: Entry[] = [
     value: 800.0,
     paymentDate: '',
     interestRate: 0,
+  },
+];
+
+export const INITIAL_INCOMES: IncomeEntry[] = [
+  {
+    id: 1,
+    companyName: 'Construtora Horizonte Ltda',
+    value: 28500.0,
+    date: '2026-08-05',
+    description: 'Medição de Obra Fase 2',
+  },
+  {
+    id: 2,
+    companyName: 'Agropecuária Santa Luzia',
+    value: 14200.0,
+    date: '2026-08-10',
+    description: 'Fornecimento de Insumos',
+  },
+  {
+    id: 3,
+    companyName: 'Transportes Rápido Sul',
+    value: 9800.0,
+    date: '2026-08-12',
+    description: 'Serviço de Logística',
+  },
+  {
+    id: 4,
+    companyName: 'Metalúrgica Imperial',
+    value: 21000.0,
+    date: '2026-07-25',
+    description: 'Faturamento Mensal',
   },
 ];

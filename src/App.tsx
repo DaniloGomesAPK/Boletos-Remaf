@@ -1,17 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Supplier, Employee, Entry, CalculatedEntry, PaymentType } from './types';
-import { INITIAL_SUPPLIERS, INITIAL_EMPLOYEES, INITIAL_ENTRIES } from './data/initialData';
+import { Supplier, Employee, Entry, CalculatedEntry, PaymentType, IncomeEntry } from './types';
+import { INITIAL_SUPPLIERS, INITIAL_EMPLOYEES, INITIAL_ENTRIES, INITIAL_INCOMES } from './data/initialData';
 import { calculateEntryDetails, exportToCSV, getTodayDateString } from './utils/calculations';
 import { Navbar } from './components/Navbar';
 import { Dashboard } from './components/Dashboard';
 import { EntriesView } from './components/EntriesView';
 import { ConfigView } from './components/ConfigView';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { AuthModal } from './components/AuthModal';
+import { LoginView } from './components/LoginView';
 import { useFirebaseSync } from './hooks/useFirebaseSync';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 function AppContent() {
+  const { user, loading } = useAuth();
+  const [isGuestMode, setIsGuestMode] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'entries' | 'config'>('dashboard');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [darkMode, setDarkMode] = useState<boolean>(() => {
@@ -34,6 +37,11 @@ function AppContent() {
     return saved ? JSON.parse(saved) : INITIAL_ENTRIES;
   });
 
+  const [incomes, setIncomes] = useState<IncomeEntry[]>(() => {
+    const saved = localStorage.getItem('cap_incomes');
+    return saved ? JSON.parse(saved) : INITIAL_INCOMES;
+  });
+
   // Notification Toast State
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -52,6 +60,8 @@ function AppContent() {
     deleteSupplierFromFirestore,
     saveEmployeeToFirestore,
     deleteEmployeeFromFirestore,
+    saveIncomeToFirestore,
+    deleteIncomeFromFirestore,
   } = useFirebaseSync({
     rawEntries,
     setRawEntries,
@@ -59,6 +69,8 @@ function AppContent() {
     setSuppliers,
     employees,
     setEmployees,
+    incomes,
+    setIncomes,
     showToast,
   });
 
@@ -86,6 +98,10 @@ function AppContent() {
   useEffect(() => {
     localStorage.setItem('cap_entries', JSON.stringify(rawEntries));
   }, [rawEntries]);
+
+  useEffect(() => {
+    localStorage.setItem('cap_incomes', JSON.stringify(incomes));
+  }, [incomes]);
 
   // Dynamically calculate statuses, interest, and totals
   const calculatedEntries: CalculatedEntry[] = useMemo(() => {
@@ -126,11 +142,16 @@ function AppContent() {
   };
 
   const handleDeleteEntry = (id: number) => {
-    if (confirm('Tem certeza que deseja excluir este lançamento?')) {
-      setRawEntries((prev) => prev.filter((e) => e.id !== id));
-      deleteEntryFromFirestore(id);
-      showToast('Lançamento excluído.');
-    }
+    setRawEntries((prev) => prev.filter((e) => e.id !== id));
+    deleteEntryFromFirestore(id);
+    showToast('Lançamento excluído com sucesso.');
+  };
+
+  const handleDeleteMultipleEntries = (ids: number[]) => {
+    const idSet = new Set(ids);
+    setRawEntries((prev) => prev.filter((e) => !idSet.has(e.id)));
+    ids.forEach((id) => deleteEntryFromFirestore(id));
+    showToast(`${ids.length} lançamentos excluídos com sucesso.`);
   };
 
   const handleQuickTogglePaid = (id: number) => {
@@ -204,14 +225,33 @@ function AppContent() {
     }
   };
 
+  // Income Operations
+  const handleAddIncome = (newIncomeData: Omit<IncomeEntry, 'id'>) => {
+    const maxId = incomes.reduce((max, inc) => Math.max(max, inc.id), 0);
+    const newIncome: IncomeEntry = {
+      ...newIncomeData,
+      id: maxId + 1,
+    };
+    setIncomes((prev) => [newIncome, ...prev]);
+    saveIncomeToFirestore(newIncome);
+    showToast(`Entrada da empresa "${newIncome.companyName}" lançada!`);
+  };
+
+  const handleDeleteIncome = (id: number) => {
+    setIncomes((prev) => prev.filter((inc) => inc.id !== id));
+    deleteIncomeFromFirestore(id);
+    showToast('Entrada excluída com sucesso.');
+  };
+
   // JSON Backup / Import / Export
   const handleExportJSON = () => {
     const backupData = {
-      version: '1.0',
+      version: '1.1',
       exportedAt: new Date().toISOString(),
       suppliers,
       employees,
       entries: rawEntries,
+      incomes,
     };
     const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -236,6 +276,9 @@ function AppContent() {
           setSuppliers(parsed.suppliers);
           setEmployees(parsed.employees);
           setRawEntries(parsed.entries);
+          if (parsed.incomes && Array.isArray(parsed.incomes)) {
+            setIncomes(parsed.incomes);
+          }
           showToast('Dados importados com sucesso!');
         } else {
           showToast('Formato de arquivo JSON inválido.', 'error');
@@ -258,18 +301,43 @@ function AppContent() {
       setSuppliers(INITIAL_SUPPLIERS);
       setEmployees(INITIAL_EMPLOYEES);
       setRawEntries(INITIAL_ENTRIES);
+      setIncomes(INITIAL_INCOMES);
       showToast('Dados de exemplo restaurados com sucesso!');
     }
   };
 
   const handleClearAllData = () => {
-    if (confirm('⚠️ ATENÇÃO: Deseja REALMENTE apagar TODOS os lançamentos, fornecedores e funcionários?')) {
+    if (confirm('⚠️ ATENÇÃO: Deseja REALMENTE apagar TODOS os lançamentos, entradas, fornecedores e funcionários?')) {
       setSuppliers([]);
       setEmployees([]);
       setRawEntries([]);
+      setIncomes([]);
       showToast('Todos os dados foram excluídos.', 'error');
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-4">
+        <div className="relative mb-4">
+          <img
+            src="/icons/icon_512x512.png"
+            alt="Carregando..."
+            className="w-16 h-16 rounded-2xl animate-pulse shadow-2xl border border-slate-800 bg-slate-900 p-1"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = '/icons/icon_128x128.png';
+            }}
+          />
+        </div>
+        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-2" />
+        <p className="text-xs text-slate-400 font-medium">Iniciando sistema financeiro...</p>
+      </div>
+    );
+  }
+
+  if (!user && !isGuestMode) {
+    return <LoginView onBypassDemo={() => setIsGuestMode(true)} />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
@@ -295,18 +363,20 @@ function AppContent() {
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        onLogout={() => setIsGuestMode(false)}
       />
 
       {/* Auth Modal */}
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-2.5 sm:px-4 lg:px-6 py-3 sm:py-4">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-2.5 sm:px-4 lg:px-6 py-3 sm:py-4 pb-24 sm:pb-6">
         {activeTab === 'dashboard' && (
           <Dashboard
             entries={calculatedEntries}
             suppliers={suppliers}
             employees={employees}
+            incomes={incomes}
           />
         )}
 
@@ -315,10 +385,14 @@ function AppContent() {
             entries={calculatedEntries}
             suppliers={suppliers}
             employees={employees}
+            incomes={incomes}
             onAddEntry={handleAddEntry}
             onUpdateEntry={handleUpdateEntry}
             onDeleteEntry={handleDeleteEntry}
+            onDeleteMultipleEntries={handleDeleteMultipleEntries}
             onQuickTogglePaid={handleQuickTogglePaid}
+            onAddIncome={handleAddIncome}
+            onDeleteIncome={handleDeleteIncome}
           />
         )}
 

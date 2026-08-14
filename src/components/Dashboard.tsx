@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { CalculatedEntry, EntitySummary, Supplier, Employee } from '../types';
+import { CalculatedEntry, EntitySummary, Supplier, Employee, IncomeEntry } from '../types';
 import { formatBRL, calculateSummaries, MONTHS_PT, getMonthYearFromDateStr } from '../utils/calculations';
 import {
   AlertTriangle,
@@ -14,6 +14,11 @@ import {
   BarChart3,
   TrendingUp,
   Award,
+  Building2,
+  Receipt,
+  Wallet,
+  ArrowDownRight,
+  ArrowUpRight,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -31,13 +36,14 @@ interface DashboardProps {
   entries: CalculatedEntry[];
   suppliers: Supplier[];
   employees: Employee[];
+  incomes?: IncomeEntry[];
 }
 
 const STORAGE_KEY_MODE = 'contas_pagar_period_mode'; // 'MONTH' | 'ALL'
 const STORAGE_KEY_MONTH = 'contas_pagar_period_month'; // e.g. 8
 const STORAGE_KEY_YEAR = 'contas_pagar_period_year'; // e.g. 2026
 
-export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employees }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employees, incomes = [] }) => {
   // Current real date defaults
   const today = new Date();
   const currentMonthNum = today.getMonth() + 1; // 1-12
@@ -240,6 +246,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
     }).length;
   }, [entries, filterMode, selectedMonth, selectedYear]);
 
+  // Card 5 - Total Entradas (Receitas)
+  const filteredIncomesForPeriod = useMemo(() => {
+    if (filterMode === 'ALL') return incomes;
+    return incomes.filter((inc) => isDateInSelectedPeriod(inc.date));
+  }, [incomes, filterMode, selectedMonth, selectedYear]);
+
+  const totalIncomesPeriod = useMemo(() => {
+    return filteredIncomesForPeriod.reduce((sum, inc) => sum + inc.value, 0);
+  }, [filteredIncomesForPeriod]);
+
+  const countIncomesPeriod = useMemo(() => {
+    return filteredIncomesForPeriod.length;
+  }, [filteredIncomesForPeriod]);
+
+  // Saldo Líquido Operacional do Período: Entradas - Despesas Pagas
+  const netBalancePeriod = useMemo(() => {
+    return totalIncomesPeriod - totalPaid;
+  }, [totalIncomesPeriod, totalPaid]);
+
   // 4. Entity Summary Table Calculations based on filtered entries
   const entitySummaries = useMemo(() => {
     return calculateSummaries(filteredEntriesForPeriod, suppliers, employees);
@@ -266,7 +291,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
       let valB = b[sortField];
 
       if (typeof valA === 'string' && typeof valB === 'string') {
-        return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(a[sortField] as string);
       }
       const numA = Number(valA) || 0;
       const numB = Number(valB) || 0;
@@ -287,9 +312,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
 
   // 5. Chart Data Calculations
 
-  // CHART 1: Evolução por Mês (últimos 6 meses)
+  // CHART 1: Evolução por Mês (últimos 6 meses) - Com Entradas e Saídas
   const chartEvolucaoData = useMemo(() => {
-    // Generate array of 6 months ending at selectedYear/selectedMonth (or current month if ALL)
     const endYear = filterMode === 'ALL' ? currentYearNum : selectedYear;
     const endMonth = filterMode === 'ALL' ? currentMonthNum : selectedMonth;
 
@@ -309,6 +333,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
       let overdueSum = 0;
       let toPaySum = 0;
       let paidSum = 0;
+      let incomeSum = 0;
 
       entries.forEach((e) => {
         const dueParts = getMonthYearFromDateStr(e.dueDate);
@@ -327,18 +352,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
         }
       });
 
+      incomes.forEach((inc) => {
+        const incParts = getMonthYearFromDateStr(inc.date);
+        if (incParts && incParts.month === m && incParts.year === y) {
+          incomeSum += inc.value;
+        }
+      });
+
       result.push({
         monthLabel: labelShort,
+        'Entradas (Receitas)': Math.round(incomeSum * 100) / 100,
+        'Total Pago (Despesas)': Math.round(paidSum * 100) / 100,
         'Total Atrasado': Math.round(overdueSum * 100) / 100,
         'Total À Vencer': Math.round(toPaySum * 100) / 100,
-        'Total Pago': Math.round(paidSum * 100) / 100,
       });
     }
 
     return result;
-  }, [entries, filterMode, selectedMonth, selectedYear, currentMonthNum, currentYearNum]);
+  }, [entries, incomes, filterMode, selectedMonth, selectedYear, currentMonthNum, currentYearNum]);
 
-// CHART 2: Valor Gasto com os Funcionários
+  // CHART 2: Valor Gasto com os Funcionários
   const chartEmployeeExpensesData = useMemo(() => {
     const empEntries = filteredEntriesForPeriod.filter((e) => e.favorecidoType === 'Funcionário');
 
@@ -386,6 +419,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
       valuePaid: Math.round(item.valuePaid * 100) / 100,
     }));
   }, [entitySummaries]);
+
+  // CHART 4: Entradas por Empresa (Volume de Receita no Período)
+  const chartIncomesByCompanyData = useMemo(() => {
+    const companyMap: Record<string, { companyName: string; total: number; count: number }> = {};
+
+    filteredIncomesForPeriod.forEach((inc) => {
+      const comp = inc.companyName.trim() || 'Outra Empresa';
+      if (!companyMap[comp]) {
+        companyMap[comp] = { companyName: comp, total: 0, count: 0 };
+      }
+      companyMap[comp].total += inc.value;
+      companyMap[comp].count += 1;
+    });
+
+    return Object.values(companyMap)
+      .map((item) => ({
+        companyName: item.companyName,
+        total: Math.round(item.total * 100) / 100,
+        count: item.count,
+      }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 8);
+  }, [filteredIncomesForPeriod]);
 
   // Year choices for dropdown
   const yearOptions = [2023, 2024, 2025, 2026, 2027, 2028, 2029];
@@ -474,23 +530,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
         </div>
       </div>
 
-      {/* 2. CARDS DE RESUMO - DINÂMICOS POR MÊS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+      {/* 2. CARDS DE RESUMO - DINÂMICOS POR MÊS (DESPESAS + ENTRADAS + SALDO) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
         {/* Card 1 - Total Atrasado */}
         <div className="p-3 rounded-lg border bg-rose-50 border-rose-200 text-rose-950 dark:bg-rose-950/70 dark:border-rose-900/80 dark:text-rose-100 shadow-2xs flex items-center justify-between transition-all hover:border-rose-300">
           <div className="space-y-0.5">
             <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300">
               <span>Total Atrasado</span>
-              <span className="text-[9px] font-mono opacity-80">({periodLabel})</span>
             </div>
-            <div className="text-xl font-extrabold tracking-tight font-mono tabular-nums text-rose-900 dark:text-rose-100">
+            <div className="text-lg font-extrabold tracking-tight font-mono tabular-nums text-rose-900 dark:text-rose-100">
               {formatBRL(totalOverdue)}
             </div>
-            <p className="text-[11px] font-medium text-rose-700 dark:text-rose-300">
-              {countOverdue} {countOverdue === 1 ? 'lançamento pendente' : 'lançamentos pendentes'}
+            <p className="text-[10px] font-medium text-rose-700 dark:text-rose-300">
+              {countOverdue} {countOverdue === 1 ? 'pendência' : 'pendências'}
             </p>
           </div>
-          <div className="p-2 rounded-md bg-rose-200/80 dark:bg-rose-900/80 text-rose-800 dark:text-rose-200 text-base font-bold">
+          <div className="p-2 rounded-md bg-rose-200/80 dark:bg-rose-900/80 text-rose-800 dark:text-rose-200 text-sm font-bold">
             ⚠️
           </div>
         </div>
@@ -500,56 +555,215 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
           <div className="space-y-0.5">
             <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">
               <span>Total À Vencer</span>
-              <span className="text-[9px] font-mono opacity-80">({periodLabel})</span>
             </div>
-            <div className="text-xl font-extrabold tracking-tight font-mono tabular-nums text-blue-900 dark:text-blue-100">
+            <div className="text-lg font-extrabold tracking-tight font-mono tabular-nums text-blue-900 dark:text-blue-100">
               {formatBRL(totalToPay)}
             </div>
-            <p className="text-[11px] font-medium text-blue-700 dark:text-blue-300">
-              {countToPay} {countToPay === 1 ? 'lançamento no prazo' : 'lançamentos no prazo'}
+            <p className="text-[10px] font-medium text-blue-700 dark:text-blue-300">
+              {countToPay} {countToPay === 1 ? 'a pagar' : 'a pagar'}
             </p>
           </div>
-          <div className="p-2 rounded-md bg-blue-200/80 dark:bg-blue-900/80 text-blue-800 dark:text-blue-200 text-base font-bold">
+          <div className="p-2 rounded-md bg-blue-200/80 dark:bg-blue-900/80 text-blue-800 dark:text-blue-200 text-sm font-bold">
             📅
           </div>
         </div>
 
-        {/* Card 3 - Total Pago */}
-        <div className="p-3 rounded-lg border bg-emerald-50 border-emerald-200 text-emerald-950 dark:bg-emerald-950/70 dark:border-emerald-900/80 dark:text-emerald-100 shadow-2xs flex items-center justify-between transition-all hover:border-emerald-300">
+        {/* Card 3 - Total Pago (Saídas) */}
+        <div className="p-3 rounded-lg border bg-slate-100 border-slate-200 text-slate-900 dark:bg-slate-800/90 dark:border-slate-700 dark:text-slate-100 shadow-2xs flex items-center justify-between transition-all hover:border-slate-300">
           <div className="space-y-0.5">
-            <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-              <span>Total Pago</span>
-              <span className="text-[9px] font-mono opacity-80">({periodLabel})</span>
+            <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+              <span>Total Pago (Saídas)</span>
             </div>
-            <div className="text-xl font-extrabold tracking-tight font-mono tabular-nums text-emerald-900 dark:text-emerald-100">
+            <div className="text-lg font-extrabold tracking-tight font-mono tabular-nums text-slate-900 dark:text-slate-100">
               {formatBRL(totalPaid)}
             </div>
-            <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-              {countPaid} {countPaid === 1 ? 'lançamento liquidado' : 'lançamentos liquidados'}
+            <p className="text-[10px] font-medium text-slate-600 dark:text-slate-400">
+              {countPaid} {countPaid === 1 ? 'liquidado' : 'liquidados'}
             </p>
           </div>
-          <div className="p-2 rounded-md bg-emerald-200/80 dark:bg-emerald-900/80 text-emerald-800 dark:text-emerald-200 text-base font-bold">
-            ✅
+          <div className="p-2 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm font-bold">
+            💸
           </div>
         </div>
 
-        {/* Card 4 - Total Geral */}
-        <div className="p-3 rounded-lg border bg-slate-100/90 border-slate-200 text-slate-900 dark:bg-slate-800/90 dark:border-slate-700 dark:text-slate-100 shadow-2xs flex items-center justify-between transition-all hover:border-slate-300">
+        {/* Card 4 - Total Entradas (Receitas) */}
+        <div className="p-3 rounded-lg border-2 bg-emerald-50 border-emerald-500/60 text-emerald-950 dark:bg-emerald-950/70 dark:border-emerald-700/80 dark:text-emerald-100 shadow-2xs flex items-center justify-between transition-all hover:border-emerald-500">
           <div className="space-y-0.5">
-            <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
-              <span>Total Geral</span>
-              <span className="text-[9px] font-mono opacity-80">({periodLabel})</span>
+            <div className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+              <TrendingUp className="w-3 h-3 text-emerald-600" />
+              <span>Total Entradas</span>
             </div>
-            <div className="text-xl font-extrabold tracking-tight font-mono tabular-nums text-slate-900 dark:text-white">
-              {formatBRL(totalGeneral)}
+            <div className="text-lg font-extrabold tracking-tight font-mono tabular-nums text-emerald-700 dark:text-emerald-300">
+              {formatBRL(totalIncomesPeriod)}
             </div>
-            <p className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
-              {countGeneral} {countGeneral === 1 ? 'lançamento total' : 'lançamentos totais'}
+            <p className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300">
+              {countIncomesPeriod} {countIncomesPeriod === 1 ? 'recebimento' : 'recebimentos'}
             </p>
           </div>
-          <div className="p-2 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 text-base font-bold">
+          <div className="p-2 rounded-md bg-emerald-200/90 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-100 text-sm font-bold shadow-2xs">
             💰
           </div>
+        </div>
+
+        {/* Card 5 - Saldo Líquido Operacional (Entradas - Saídas Pagas) */}
+        <div
+          className={`p-3 rounded-lg border flex items-center justify-between transition-all shadow-2xs ${
+            netBalancePeriod >= 0
+              ? 'bg-teal-50 border-teal-200 text-teal-950 dark:bg-teal-950/70 dark:border-teal-900/80 dark:text-teal-100'
+              : 'bg-amber-50 border-amber-200 text-amber-950 dark:bg-amber-950/70 dark:border-amber-900/80 dark:text-amber-100'
+          }`}
+        >
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+              <Wallet className="w-3 h-3" />
+              <span>Saldo Operacional</span>
+            </div>
+            <div
+              className={`text-lg font-extrabold tracking-tight font-mono tabular-nums ${
+                netBalancePeriod >= 0
+                  ? 'text-teal-700 dark:text-teal-300'
+                  : 'text-amber-700 dark:text-amber-400'
+              }`}
+            >
+              {formatBRL(netBalancePeriod)}
+            </div>
+            <p className="text-[10px] font-medium text-slate-600 dark:text-slate-400 flex items-center gap-0.5">
+              {netBalancePeriod >= 0 ? (
+                <>
+                  <ArrowUpRight className="w-3 h-3 text-teal-600" />
+                  <span className="text-teal-700 dark:text-teal-300 font-semibold">Superávit no período</span>
+                </>
+              ) : (
+                <>
+                  <ArrowDownRight className="w-3 h-3 text-amber-600" />
+                  <span className="text-amber-700 dark:text-amber-300 font-semibold">Déficit no período</span>
+                </>
+              )}
+            </p>
+          </div>
+          <div
+            className={`p-2 rounded-md text-sm font-bold ${
+              netBalancePeriod >= 0
+                ? 'bg-teal-200/80 dark:bg-teal-900 text-teal-900 dark:text-teal-100'
+                : 'bg-amber-200/80 dark:bg-amber-900 text-amber-900 dark:text-amber-100'
+            }`}
+          >
+            {netBalancePeriod >= 0 ? '📊' : '⚖️'}
+          </div>
+        </div>
+      </div>
+
+      {/* 2.1 PAINEL DE RÁPIDA VISUALIZAÇÃO DE ENTRADAS (RECEITAS) */}
+      <div className="bg-white dark:bg-slate-900 border border-emerald-300/80 dark:border-emerald-800/80 rounded-lg shadow-2xs overflow-hidden">
+        <div className="p-2.5 sm:p-3 border-b border-emerald-200 dark:border-emerald-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-emerald-50/60 dark:bg-emerald-950/30">
+          <div className="flex items-center gap-2">
+            <div className="p-1 rounded bg-emerald-600 text-white">
+              <TrendingUp className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <h2 className="text-xs font-extrabold text-emerald-950 dark:text-emerald-200 uppercase tracking-wider flex items-center gap-2">
+                Rápida Visualização de Entradas (Receitas) - {periodLabel}
+              </h2>
+              <p className="text-[11px] text-emerald-800/80 dark:text-emerald-300/80">
+                Lançamentos de entrada informados com reflexo imediato no fluxo de caixa ({filteredIncomesForPeriod.length} registros).
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-emerald-950 dark:text-emerald-200">
+              Total Recebido:{' '}
+              <span className="font-mono text-emerald-700 dark:text-emerald-300 font-extrabold">
+                {formatBRL(totalIncomesPeriod)}
+              </span>
+            </span>
+          </div>
+        </div>
+
+        {/* Mobile Incomes Card List */}
+        <div className="sm:hidden divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
+          {filteredIncomesForPeriod.length === 0 ? (
+            <div className="py-6 text-center text-slate-500 dark:text-slate-400 text-xs px-4">
+              Nenhuma entrada registrada para o período <span className="font-semibold">{periodLabel}</span>.
+            </div>
+          ) : (
+            filteredIncomesForPeriod.map((inc) => (
+              <div key={`dash-inc-m-${inc.id}`} className="p-3 space-y-1 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/20">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Building2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span className="font-bold text-xs text-slate-900 dark:text-white truncate">{inc.companyName}</span>
+                  </div>
+                  <span className="font-mono font-extrabold text-xs text-emerald-600 dark:text-emerald-400 shrink-0">
+                    {formatBRL(inc.value)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono">
+                  <span>#{inc.id} &bull; {inc.date.includes('-') ? inc.date.split('-').reverse().join('/') : inc.date}</span>
+                  {inc.description && <span className="italic font-sans text-slate-600 dark:text-slate-300 truncate max-w-[160px]">{inc.description}</span>}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Quick Incomes Table (Desktop & Tablet) */}
+        <div className="hidden sm:block overflow-x-auto">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-emerald-100/50 dark:bg-emerald-900/30 text-emerald-950 dark:text-emerald-200 font-bold border-b border-emerald-200 dark:border-emerald-800 text-[11px]">
+                <th className="py-2 px-3 w-12 font-mono text-center">ID</th>
+                <th className="py-2 px-3">Nome da Empresa / Cliente</th>
+                <th className="py-2 px-3">Data do Recebimento</th>
+                <th className="py-2 px-3">Descrição / Detalhes</th>
+                <th className="py-2 px-3 text-right font-mono">Valor da Entrada</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200/80 dark:divide-slate-800 text-[11px] font-mono tabular-nums">
+              {filteredIncomesForPeriod.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-6 text-center text-slate-500 dark:text-slate-400 font-sans">
+                    Nenhuma entrada registrada para o período <span className="font-semibold">{periodLabel}</span>.
+                  </td>
+                </tr>
+              ) : (
+                filteredIncomesForPeriod.map((inc) => (
+                  <tr key={inc.id} className="hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 transition-colors">
+                    <td className="py-1.5 px-3 font-mono text-slate-400 text-center text-[10px]">#{inc.id}</td>
+                    <td className="py-1.5 px-3 font-sans font-bold text-slate-900 dark:text-white">
+                      <div className="flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span>{inc.companyName}</span>
+                      </div>
+                    </td>
+                    <td className="py-1.5 px-3 text-slate-800 dark:text-slate-200">
+                      {inc.date.includes('-')
+                        ? inc.date.split('-').reverse().join('/')
+                        : inc.date}
+                    </td>
+                    <td className="py-1.5 px-3 font-sans text-slate-600 dark:text-slate-400">
+                      {inc.description || '-'}
+                    </td>
+                    <td className="py-1.5 px-3 text-right font-extrabold font-mono text-emerald-600 dark:text-emerald-400">
+                      {formatBRL(inc.value)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+            {filteredIncomesForPeriod.length > 0 && (
+              <tfoot>
+                <tr className="bg-emerald-50 dark:bg-emerald-950/40 font-bold border-t border-emerald-200 dark:border-emerald-800 text-xs">
+                  <td colSpan={4} className="py-2 px-3 text-right text-emerald-950 dark:text-emerald-200 font-sans uppercase">
+                    Total de Entradas em {periodLabel}:
+                  </td>
+                  <td className="py-2 px-3 text-right font-mono font-extrabold text-emerald-700 dark:text-emerald-300">
+                    {formatBRL(totalIncomesPeriod)}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
         </div>
       </div>
 
@@ -616,8 +830,89 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
           </div>
         </div>
 
-        {/* Summary Table */}
-        <div className="overflow-x-auto">
+        {/* Mobile Favorecidos Summary Cards */}
+        <div className="sm:hidden divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
+          {filteredSummaries.length === 0 ? (
+            <div className="py-6 text-center text-slate-500 dark:text-slate-400 text-xs px-4">
+              Nenhum favorecido com lançamentos em <span className="font-semibold">{periodLabel}</span>.
+            </div>
+          ) : (
+            filteredSummaries.map((item, idx) => {
+              const isSupplier = item.type === 'Fornecedor';
+              const hasBalance = item.balanceDue > 0;
+
+              return (
+                <div key={`dash-fav-m-${item.type}-${item.name}-${idx}`} className="p-3 space-y-2 hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="font-bold text-xs text-slate-900 dark:text-white block">{item.name}</span>
+                      <span
+                        className={`inline-block mt-0.5 px-1.5 py-0.25 rounded text-[10px] font-semibold ${
+                          isSupplier
+                            ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300 dark:border-slate-700'
+                            : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
+                        }`}
+                      >
+                        {isSupplier ? 'Fornecedor' : (item.paymentType || 'Funcionário')}
+                      </span>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-[10px] text-slate-500 block">Saldo Devedor</span>
+                      <span
+                        className={`font-mono font-extrabold text-xs ${
+                          hasBalance
+                            ? 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-900'
+                            : 'text-slate-600 dark:text-slate-400'
+                        }`}
+                      >
+                        {formatBRL(item.balanceDue)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1.5 text-[10px] pt-1 border-t border-slate-100 dark:border-slate-800">
+                    <div className="bg-emerald-50 dark:bg-emerald-950/40 p-1.5 rounded text-center border border-emerald-200/60 dark:border-emerald-900/60">
+                      <span className="text-emerald-800 dark:text-emerald-300 block font-semibold">Pago ({item.countPaid})</span>
+                      <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">{formatBRL(item.valuePaid)}</span>
+                    </div>
+
+                    <div className="bg-rose-50 dark:bg-rose-950/40 p-1.5 rounded text-center border border-rose-200/60 dark:border-rose-900/60">
+                      <span className="text-rose-800 dark:text-rose-300 block font-semibold">Atraso ({item.countOverdue})</span>
+                      <span className="font-mono font-bold text-rose-700 dark:text-rose-400">{formatBRL(item.valueOverdue)}</span>
+                    </div>
+
+                    <div className="bg-blue-50 dark:bg-blue-950/40 p-1.5 rounded text-center border border-blue-200/60 dark:border-blue-900/60">
+                      <span className="text-blue-800 dark:text-blue-300 block font-semibold">À Vencer ({item.countToPay})</span>
+                      <span className="font-mono font-bold text-blue-700 dark:text-blue-400">{formatBRL(item.valueToPay)}</span>
+                    </div>
+                  </div>
+
+                  {item.accumulatedInterest > 0 && (
+                    <div className="flex items-center justify-between text-[10px] text-rose-600 dark:text-rose-400 font-mono">
+                      <span>Juros acumulados:</span>
+                      <span className="font-bold">{formatBRL(item.accumulatedInterest)}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+
+          {filteredSummaries.length > 0 && (
+            <div className="p-3 bg-slate-100 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between font-bold text-xs">
+              <span className="text-slate-800 dark:text-slate-200 uppercase tracking-wider text-[10px]">
+                Saldo Total Devedor:
+              </span>
+              <span className="font-mono font-extrabold text-amber-700 dark:text-amber-400 text-sm">
+                {formatBRL(filteredSummaries.reduce((sum, i) => sum + i.balanceDue, 0))}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Summary Table (Desktop & Tablet) */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-slate-100/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-700 select-none text-[11px]">
@@ -815,17 +1110,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
 
       {/* 4. GRÁFICOS INTERATIVOS (CHARTS) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* CHART 1: Evolução por Mês (últimos 6 meses) */}
+        {/* CHART 1: Evolução por Mês (últimos 6 meses) - Entradas vs Saídas */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-3.5 shadow-2xs space-y-3 lg:col-span-2">
           <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
             <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
-              <TrendingUp className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              Evolução por Mês (Histórico de 6 Meses)
+              <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              Evolução por Mês: Entradas (Receitas) vs Contas Pagas & Pendências
             </h3>
-            <span className="text-[10px] text-slate-500 font-mono">Valores em R$ (Atrasados | À Vencer | Pagos)</span>
+            <span className="text-[10px] text-slate-500 font-mono">Valores em R$ (Histórico de 6 meses)</span>
           </div>
 
-          <div className="h-64 w-full">
+          <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartEvolucaoData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
@@ -845,12 +1140,64 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
                   }}
                 />
                 <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
+                <Bar dataKey="Entradas (Receitas)" fill="#059669" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Total Pago (Despesas)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="Total Atrasado" fill="#f43f5e" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Total À Vencer" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Total Pago" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Total À Vencer" fill="#94a3b8" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </div>
+
+        {/* CHART 4: Entradas por Empresa (Volume de Receita no Período) */}
+        <div className="bg-white dark:bg-slate-900 border border-emerald-300/80 dark:border-emerald-800/80 rounded-lg p-3.5 shadow-2xs space-y-3">
+          <div className="flex items-center justify-between border-b border-emerald-200 dark:border-emerald-800/80 pb-2">
+            <h3 className="text-xs font-bold text-emerald-950 dark:text-emerald-200 uppercase tracking-wider flex items-center gap-1.5">
+              <Receipt className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              Entradas por Empresa / Cliente ({periodLabel})
+            </h3>
+            <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-mono font-bold">
+              Total: {formatBRL(totalIncomesPeriod)}
+            </span>
+          </div>
+
+          {chartIncomesByCompanyData.length === 0 ? (
+            <div className="h-56 flex items-center justify-center text-xs text-slate-500">
+              Nenhuma entrada registrada para o período selecionado.
+            </div>
+          ) : (
+            <div className="h-56 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={chartIncomesByCompanyData}
+                  layout="vertical"
+                  margin={{ top: 5, right: 20, left: 20, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.2} />
+                  <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `R$${v}`} />
+                  <YAxis dataKey="companyName" type="category" tick={{ fontSize: 10 }} width={100} />
+                  <Tooltip
+                    formatter={(val: unknown) => [formatBRL(Number(val) || 0), 'Valor Recebido']}
+                    contentStyle={{
+                      backgroundColor: '#1e293b',
+                      borderColor: '#334155',
+                      color: '#f8fafc',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                    }}
+                  />
+                  <Bar dataKey="total" fill="#059669" radius={[0, 4, 4, 0]}>
+                    {chartIncomesByCompanyData.map((_, index) => (
+                      <Cell
+                        key={`income-cell-${index}`}
+                        fill={index === 0 ? '#047857' : index === 1 ? '#059669' : '#10b981'}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
 
         {/* CHART 2: Valor Gasto com os Funcionários */}
@@ -899,13 +1246,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
         </div>
 
         {/* CHART 3: Top 5 Fornecedores/Funcionários por Valor Total */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-3.5 shadow-2xs space-y-3">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-3.5 shadow-2xs space-y-3 lg:col-span-2">
           <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
             <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
               <Award className="w-4 h-4 text-amber-500" />
-              Top 5 Favorecidos ({periodLabel})
+              Top 5 Favorecidos (Despesas) - {periodLabel}
             </h3>
-            <span className="text-[10px] text-slate-500 font-mono">Por Volume em R$</span>
+            <span className="text-[10px] text-slate-500 font-mono">Por Volume Total em R$</span>
           </div>
 
           {chartTopEntitiesData.length === 0 ? (
@@ -922,7 +1269,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
                 >
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.2} />
                   <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `R$${v}`} />
-                  <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={90} />
+                  <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={120} />
                   <Tooltip
                     formatter={(val: unknown) => [formatBRL(Number(val) || 0), 'Total']}
                     contentStyle={{
