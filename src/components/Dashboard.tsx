@@ -247,7 +247,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
 
   // Filter & Sort Entity Summaries Table
   const filteredSummaries = useMemo(() => {
-    let list = [...entitySummaries];
+    // Filter out suppliers and employees that have 0 across all values (Pago, Atrasado, À Vencer)
+    let list = entitySummaries.filter(
+      (item) => item.valuePaid > 0 || item.valueOverdue > 0 || item.valueToPay > 0
+    );
 
     if (filterType !== 'Todos') {
       list = list.filter((item) => item.type === filterType);
