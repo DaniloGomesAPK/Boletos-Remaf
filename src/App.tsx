@@ -129,14 +129,30 @@ function AppContent() {
 
   // Supplier Operations (Direct Cloud Firestore)
   const handleAddSupplier = async (name: string) => {
+    const trimmedName = name.trim();
+    const exists = suppliers.some(
+      (s) => s.name.trim().toLowerCase() === trimmedName.toLowerCase()
+    );
+    if (exists) {
+      showToast(`Fornecedor "${trimmedName}" já está cadastrado.`, 'error');
+      return;
+    }
     const maxId = suppliers.reduce((max, s) => Math.max(max, s.id), 0);
-    const newSup: Supplier = { id: maxId > 0 ? maxId + 1 : Date.now(), name };
+    const newSup: Supplier = { id: maxId > 0 ? maxId + 1 : Date.now(), name: trimmedName };
     await saveSupplierToFirestore(newSup);
-    showToast(`Fornecedor "${name}" salvo no Firestore!`);
+    showToast(`Fornecedor "${trimmedName}" salvo no Firestore!`);
   };
 
   const handleUpdateSupplier = async (id: number, name: string) => {
-    const updated = { id, name };
+    const trimmedName = name.trim();
+    const exists = suppliers.some(
+      (s) => s.id !== id && s.name.trim().toLowerCase() === trimmedName.toLowerCase()
+    );
+    if (exists) {
+      showToast(`Já existe outro fornecedor com o nome "${trimmedName}".`, 'error');
+      return;
+    }
+    const updated = { id, name: trimmedName };
     await saveSupplierToFirestore(updated);
     showToast('Fornecedor atualizado no Firestore!');
   };
@@ -150,14 +166,38 @@ function AppContent() {
 
   // Employee Operations (Direct Cloud Firestore)
   const handleAddEmployee = async (name: string, paymentType: PaymentType) => {
+    const trimmedName = name.trim();
+    // Rule: funcionário + tipo_pagamento deve ser único
+    const exists = employees.some(
+      (emp) =>
+        emp.name.trim().toLowerCase() === trimmedName.toLowerCase() &&
+        emp.paymentType === paymentType
+    );
+    if (exists) {
+      showToast(`Funcionário "${trimmedName}" já está cadastrado para ${paymentType}.`, 'error');
+      return;
+    }
+
     const maxId = employees.reduce((max, emp) => Math.max(max, emp.id), 0);
-    const newEmp: Employee = { id: maxId > 0 ? maxId + 1 : Date.now(), name, paymentType };
+    const newEmp: Employee = { id: maxId > 0 ? maxId + 1 : Date.now(), name: trimmedName, paymentType };
     await saveEmployeeToFirestore(newEmp);
-    showToast(`Funcionário "${name}" salvo no Firestore!`);
+    showToast(`Funcionário "${trimmedName}" (${paymentType}) salvo no Firestore!`);
   };
 
   const handleUpdateEmployee = async (id: number, name: string, paymentType: PaymentType) => {
-    const updated = { id, name, paymentType };
+    const trimmedName = name.trim();
+    const exists = employees.some(
+      (emp) =>
+        emp.id !== id &&
+        emp.name.trim().toLowerCase() === trimmedName.toLowerCase() &&
+        emp.paymentType === paymentType
+    );
+    if (exists) {
+      showToast(`Já existe um cadastro de "${trimmedName}" para ${paymentType}.`, 'error');
+      return;
+    }
+
+    const updated = { id, name: trimmedName, paymentType };
     await saveEmployeeToFirestore(updated);
     showToast('Funcionário atualizado no Firestore!');
   };
@@ -216,18 +256,30 @@ function AppContent() {
         const parsed = JSON.parse(event.target?.result as string);
         if (parsed.suppliers && parsed.employees && parsed.entries) {
           showToast('Importando dados para o Cloud Firestore...', 'success');
-          // Write all to Firestore
+          // Write all to Firestore, strictly stripping any foreign userId so save* assigns currentUser.uid
           if (Array.isArray(parsed.suppliers)) {
-            for (const s of parsed.suppliers) await saveSupplierToFirestore(s);
+            for (const s of parsed.suppliers) {
+              const { userId: _ignored, ...supData } = s;
+              await saveSupplierToFirestore(supData);
+            }
           }
           if (Array.isArray(parsed.employees)) {
-            for (const emp of parsed.employees) await saveEmployeeToFirestore(emp);
+            for (const emp of parsed.employees) {
+              const { userId: _ignored, ...empData } = emp;
+              await saveEmployeeToFirestore(empData);
+            }
           }
           if (Array.isArray(parsed.entries)) {
-            for (const entry of parsed.entries) await saveEntryToFirestore(entry);
+            for (const entry of parsed.entries) {
+              const { userId: _ignored, ...entryData } = entry;
+              await saveEntryToFirestore(entryData);
+            }
           }
           if (Array.isArray(parsed.incomes)) {
-            for (const inc of parsed.incomes) await saveIncomeToFirestore(inc);
+            for (const inc of parsed.incomes) {
+              const { userId: _ignored, ...incData } = inc;
+              await saveIncomeToFirestore(incData);
+            }
           }
           showToast('Dados salvos no Cloud Firestore com sucesso!');
         } else {

@@ -96,6 +96,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
   const [sortField, setSortField] = useState<keyof EntitySummary>('balanceDue');
   const [sortAsc, setSortAsc] = useState(false);
 
+  // Sorted suppliers for debt analysis
+  const sortedSuppliers = useMemo(() => {
+    return [...suppliers].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [suppliers]);
+
+  // Selected supplier for debt analysis
+  const [selectedSupplierForDebt, setSelectedSupplierForDebt] = useState<number | ''>(() => {
+    if (suppliers.length > 0) {
+      const sorted = [...suppliers].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      return sorted[0].id;
+    }
+    return '';
+  });
+
+  // Auto-sync supplier selection if list becomes available or selection was removed
+  useEffect(() => {
+    if (suppliers.length > 0) {
+      const exists = suppliers.some((s) => s.id === selectedSupplierForDebt);
+      if (!exists || selectedSupplierForDebt === '') {
+        const sorted = [...suppliers].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+        setSelectedSupplierForDebt(sorted[0].id);
+      }
+    }
+  }, [suppliers, selectedSupplierForDebt]);
+
   // Sync state changes to localStorage and URL search params
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_MODE, filterMode);
@@ -442,6 +467,63 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
       .sort((a, b) => b.total - a.total)
       .slice(0, 8);
   }, [filteredIncomesForPeriod]);
+
+  // CHART 5: Dívida por Fornecedor (Agrupada por mês de vencimento)
+  const supplierDebtData = useMemo(() => {
+    if (!selectedSupplierForDebt) {
+      return { monthsData: [], totalDebt: 0, supplierName: '' };
+    }
+
+    const supplier = suppliers.find((s) => s.id === Number(selectedSupplierForDebt));
+    if (!supplier) {
+      return { monthsData: [], totalDebt: 0, supplierName: '' };
+    }
+
+    // Filtrar apenas contas realmente pendentes (status !== 'Pago') do fornecedor selecionado
+    const pendingEntries = entries.filter((e) => {
+      const isSupplierMatch =
+        e.favorecidoName.trim().toLowerCase() === supplier.name.trim().toLowerCase() &&
+        (e.favorecidoType === 'Fornecedor' || e.favorecidoId.startsWith('forn-'));
+      const isPending = e.status !== 'Pago';
+      return isSupplierMatch && isPending;
+    });
+
+    const monthMap: Record<string, { month: number; year: number; monthLabel: string; value: number }> = {};
+    let totalDebt = 0;
+
+    pendingEntries.forEach((e) => {
+      const parts = getMonthYearFromDateStr(e.dueDate);
+      if (!parts) return;
+      const key = `${parts.year}-${String(parts.month).padStart(2, '0')}`;
+      const mInfo = MONTHS_PT.find((item) => item.value === parts.month);
+      const labelShort = mInfo ? `${mInfo.short}/${String(parts.year)}` : `${parts.month}/${parts.year}`;
+
+      if (!monthMap[key]) {
+        monthMap[key] = {
+          month: parts.month,
+          year: parts.year,
+          monthLabel: labelShort,
+          value: 0,
+        };
+      }
+      monthMap[key].value += e.totalWithInterest;
+      totalDebt += e.totalWithInterest;
+    });
+
+    // Ordenar meses em ordem cronológica
+    const sortedMonths = Object.values(monthMap)
+      .sort((a, b) => a.year * 12 + a.month - (b.year * 12 + b.month))
+      .map((item) => ({
+        monthLabel: item.monthLabel,
+        'Dívida Pendente': Math.round(item.value * 100) / 100,
+      }));
+
+    return {
+      monthsData: sortedMonths,
+      totalDebt: Math.round(totalDebt * 100) / 100,
+      supplierName: supplier.name,
+    };
+  }, [entries, suppliers, selectedSupplierForDebt]);
 
   // Year choices for dropdown
   const yearOptions = [2023, 2024, 2025, 2026, 2027, 2028, 2029];
@@ -1138,6 +1220,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
                     borderRadius: '8px',
                     fontSize: '12px',
                   }}
+                  itemStyle={{ color: '#f8fafc', fontWeight: 600 }}
+                  labelStyle={{ color: '#ffffff', fontWeight: 700 }}
                 />
                 <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
                 <Bar dataKey="Entradas (Receitas)" fill="#059669" radius={[4, 4, 0, 0]} />
@@ -1185,6 +1269,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
                       borderRadius: '8px',
                       fontSize: '12px',
                     }}
+                    itemStyle={{ color: '#f8fafc', fontWeight: 600 }}
+                    labelStyle={{ color: '#ffffff', fontWeight: 700 }}
                   />
                   <Bar dataKey="total" fill="#059669" radius={[0, 4, 4, 0]}>
                     {chartIncomesByCompanyData.map((_, index) => (
@@ -1235,6 +1321,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
                       borderRadius: '8px',
                       fontSize: '12px',
                     }}
+                    itemStyle={{ color: '#f8fafc', fontWeight: 600 }}
+                    labelStyle={{ color: '#ffffff', fontWeight: 700 }}
                   />
                   <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '4px' }} />
                   <Bar dataKey="Pago" fill="#10b981" stackId="a" radius={[0, 0, 0, 0]} />
@@ -1279,6 +1367,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
                       borderRadius: '8px',
                       fontSize: '12px',
                     }}
+                    itemStyle={{ color: '#f8fafc', fontWeight: 600 }}
+                    labelStyle={{ color: '#ffffff', fontWeight: 700 }}
                   />
                   <Bar dataKey="total" radius={[0, 4, 4, 0]}>
                     {chartTopEntitiesData.map((item, index) => (
@@ -1292,6 +1382,101 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
               </ResponsiveContainer>
             </div>
           )}
+        </div>
+
+        {/* CHART 5: Dívida por Fornecedor */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-3.5 shadow-2xs space-y-3 lg:col-span-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-200 dark:border-slate-800 pb-2">
+            <div className="flex items-center gap-2">
+              <div className="p-1 rounded bg-indigo-600 text-white">
+                <Truck className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                  Dívida por Fornecedor
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Lançamentos pendentes agrupados por mês de vencimento em ordem cronológica.
+                </p>
+              </div>
+            </div>
+
+            {/* Dropdown de Seleção de Fornecedor */}
+            <div className="flex items-center gap-2">
+              <label htmlFor="select-debt-supplier" className="text-xs font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                Fornecedor:
+              </label>
+              <select
+                id="select-debt-supplier"
+                value={selectedSupplierForDebt}
+                onChange={(e) => setSelectedSupplierForDebt(e.target.value ? Number(e.target.value) : '')}
+                className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-semibold text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none h-7.5 min-w-[200px]"
+              >
+                {sortedSuppliers.length === 0 && <option value="">Nenhum fornecedor cadastrado</option>}
+                {sortedSuppliers.map((sup) => (
+                  <option key={`debt-supplier-opt-${sup.id}`} value={sup.id}>
+                    {sup.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {supplierDebtData.monthsData.length === 0 ? (
+            <div className="h-48 flex flex-col items-center justify-center text-xs text-slate-500 space-y-1 bg-slate-50/50 dark:bg-slate-850/50 rounded-md border border-dashed border-slate-200 dark:border-slate-800">
+              <span className="font-semibold text-slate-700 dark:text-slate-300">
+                Nenhuma dívida pendente encontrada para {supplierDebtData.supplierName || 'o fornecedor selecionado'}.
+              </span>
+              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
+                Sem contas atrasadas ou a vencer (Total: R$ 0,00).
+              </span>
+            </div>
+          ) : (
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={supplierDebtData.monthsData}
+                  margin={{ top: 15, right: 15, left: 15, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                  <XAxis dataKey="monthLabel" tick={{ fontSize: 11 }} />
+                  <YAxis
+                    tick={{ fontSize: 10 }}
+                    tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip
+                    formatter={(val: unknown) => [formatBRL(Number(val) || 0), 'Dívida Pendente']}
+                    contentStyle={{
+                      backgroundColor: '#1e293b',
+                      borderColor: '#334155',
+                      color: '#f8fafc',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                    }}
+                    itemStyle={{ color: '#f8fafc', fontWeight: 600 }}
+                    labelStyle={{ color: '#ffffff', fontWeight: 700 }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '4px' }} />
+                  <Bar
+                    dataKey="Dívida Pendente"
+                    fill="#f43f5e"
+                    radius={[4, 4, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Rodapé: Total Geral da Dívida */}
+          <div className="p-3 bg-rose-50/90 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-lg flex items-center justify-between font-bold text-xs">
+            <span className="text-rose-950 dark:text-rose-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5 font-bold">
+              <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+              TOTAL DA DÍVIDA {supplierDebtData.supplierName ? `(${supplierDebtData.supplierName.toUpperCase()})` : ''}:
+            </span>
+            <span className="font-mono font-extrabold text-rose-700 dark:text-rose-300 text-sm">
+              {formatBRL(supplierDebtData.totalDebt)}
+            </span>
+          </div>
         </div>
       </div>
     </div>

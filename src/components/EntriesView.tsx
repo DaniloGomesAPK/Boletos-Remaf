@@ -94,6 +94,8 @@ export const EntriesView: React.FC<EntriesViewProps> = ({
   // Sorted suppliers and employees
   const sortedSuppliers = [...suppliers].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   const sortedEmployees = [...employees].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  const paymentEmployees = sortedEmployees.filter((emp) => emp.paymentType === 'Pagamento');
+  const advanceEmployees = sortedEmployees.filter((emp) => emp.paymentType === 'Adiantamento');
 
   const handleStatusFilterChange = (newStatus: 'Todos' | EntryStatus) => {
     setStatusFilter(newStatus);
@@ -692,14 +694,14 @@ export const EntriesView: React.FC<EntriesViewProps> = ({
                       ))}
                     </optgroup>
                     <optgroup label="Funcionários - Pagamentos">
-                      {sortedEmployees.map((emp) => (
+                      {paymentEmployees.map((emp) => (
                         <option key={`func-${emp.id}-pagamento`} value={`func-${emp.id}-pagamento`}>
                           [Func] {emp.name} - Pagamento
                         </option>
                       ))}
                     </optgroup>
                     <optgroup label="Funcionários - Adiantamentos">
-                      {sortedEmployees.map((emp) => (
+                      {advanceEmployees.map((emp) => (
                         <option key={`func-${emp.id}-adiantamento`} value={`func-${emp.id}-adiantamento`}>
                           [Func] {emp.name} - Adiantamento
                         </option>

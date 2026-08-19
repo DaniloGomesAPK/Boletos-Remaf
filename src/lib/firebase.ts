@@ -17,11 +17,13 @@ import {
   collection,
   doc,
   setDoc,
+  getDoc,
   getDocs,
   deleteDoc,
   query,
   where,
   onSnapshot,
+  serverTimestamp,
 } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -55,11 +57,13 @@ export {
   collection,
   doc,
   setDoc,
+  getDoc,
   getDocs,
   deleteDoc,
   query,
   where,
   onSnapshot,
+  serverTimestamp,
 };
 
 export type { User };
