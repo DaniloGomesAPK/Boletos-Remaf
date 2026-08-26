@@ -76,7 +76,7 @@ export const EntriesView: React.FC<EntriesViewProps> = ({
   const [dueDate, setDueDate] = useState('');
   const [value, setValue] = useState('');
   const [paymentDate, setPaymentDate] = useState('');
-  const [interestRate, setInterestRate] = useState('2.5');
+  const [interestRate, setInterestRate] = useState('');
 
   // Filter & Search State for Contas a Pagar
   const [statusFilter, setStatusFilter] = useState<'Todos' | EntryStatus>('Todos');
@@ -203,6 +203,7 @@ export const EntriesView: React.FC<EntriesViewProps> = ({
     setNfNumber('');
     setValue('');
     setPaymentDate('');
+    setInterestRate('');
   };
 
   // Submit Handler for Entrada (Receita)
@@ -798,7 +799,6 @@ export const EntriesView: React.FC<EntriesViewProps> = ({
                     max="100"
                     value={interestRate}
                     onChange={(e) => setInterestRate(e.target.value)}
-                    placeholder="2.5"
                     className="w-full px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none h-7.5 font-mono"
                   />
                 </div>
