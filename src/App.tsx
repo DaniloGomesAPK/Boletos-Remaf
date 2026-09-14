@@ -4,6 +4,7 @@ import { calculateEntryDetails, exportToCSV, getTodayDateString } from './utils/
 import { Navbar } from './components/Navbar';
 import { Dashboard } from './components/Dashboard';
 import { EntriesView } from './components/EntriesView';
+import { SupplierReportView } from './components/SupplierReportView';
 import { ConfigView } from './components/ConfigView';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AuthModal } from './components/AuthModal';
@@ -13,7 +14,7 @@ import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 function AppContent() {
   const { user, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'entries' | 'config'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'entries' | 'suppliers' | 'config'>('dashboard');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('theme_preference') === 'dark';
@@ -388,6 +389,13 @@ function AppContent() {
             onQuickTogglePaid={handleQuickTogglePaid}
             onAddIncome={handleAddIncome}
             onDeleteIncome={handleDeleteIncome}
+          />
+        )}
+
+        {activeTab === 'suppliers' && (
+          <SupplierReportView
+            suppliers={suppliers}
+            entries={calculatedEntries}
           />
         )}
 

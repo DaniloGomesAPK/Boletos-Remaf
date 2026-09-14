@@ -8,12 +8,13 @@ import {
   Cloud,
   RefreshCw,
   WifiOff,
+  Truck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface NavbarProps {
-  activeTab: 'dashboard' | 'entries' | 'config';
-  setActiveTab: (tab: 'dashboard' | 'entries' | 'config') => void;
+  activeTab: 'dashboard' | 'entries' | 'suppliers' | 'config';
+  setActiveTab: (tab: 'dashboard' | 'entries' | 'suppliers' | 'config') => void;
   onLogout?: () => void;
   isSyncing?: boolean;
   isOnline?: boolean;
@@ -105,6 +106,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
 
               <button
+                onClick={() => setActiveTab('suppliers')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  activeTab === 'suppliers'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                }`}
+              >
+                <Truck className="w-3.5 h-3.5" />
+                <span>Fornecedores</span>
+              </button>
+
+              <button
                 onClick={() => setActiveTab('config')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
                   activeTab === 'config'
@@ -113,7 +126,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}
               >
                 <Settings className="w-3.5 h-3.5" />
-                <span>Configurações</span>
+                <span>Configuração</span>
               </button>
             </nav>
 
@@ -191,46 +204,59 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* iOS & Mobile Bottom Tab Navigation Bar (fixed at screen bottom, native app feel) */}
       <nav
         aria-label="Navegação Mobile"
-        className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800/90 pb-[max(env(safe-area-inset-bottom),8px)] pt-1.5 px-3 shadow-lg"
+        className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800/90 pb-[max(env(safe-area-inset-bottom),8px)] pt-1.5 px-2 shadow-lg"
       >
-        <div className="grid grid-cols-3 gap-1">
+        <div className="grid grid-cols-4 gap-1">
           <button
             type="button"
             onClick={() => setActiveTab('dashboard')}
-            className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all min-h-[46px] cursor-pointer ${
+            className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-all min-h-[46px] cursor-pointer ${
               activeTab === 'dashboard'
                 ? 'bg-blue-600/20 text-blue-400 font-bold'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <LayoutDashboard className={`w-5 h-5 mb-0.5 ${activeTab === 'dashboard' ? 'text-blue-400' : ''}`} />
-            <span className="text-[11px] leading-none">Dashboard</span>
+            <LayoutDashboard className={`w-4 h-4 mb-0.5 ${activeTab === 'dashboard' ? 'text-blue-400' : ''}`} />
+            <span className="text-[10px] leading-none">Dashboard</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('entries')}
-            className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all min-h-[46px] cursor-pointer ${
+            className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-all min-h-[46px] cursor-pointer ${
               activeTab === 'entries'
                 ? 'bg-blue-600/20 text-blue-400 font-bold'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <FileSpreadsheet className={`w-5 h-5 mb-0.5 ${activeTab === 'entries' ? 'text-blue-400' : ''}`} />
-            <span className="text-[11px] leading-none">Lançamentos</span>
+            <FileSpreadsheet className={`w-4 h-4 mb-0.5 ${activeTab === 'entries' ? 'text-blue-400' : ''}`} />
+            <span className="text-[10px] leading-none">Lançamentos</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('suppliers')}
+            className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-all min-h-[46px] cursor-pointer ${
+              activeTab === 'suppliers'
+                ? 'bg-blue-600/20 text-blue-400 font-bold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Truck className={`w-4 h-4 mb-0.5 ${activeTab === 'suppliers' ? 'text-blue-400' : ''}`} />
+            <span className="text-[10px] leading-none">Fornecedores</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('config')}
-            className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all min-h-[46px] cursor-pointer ${
+            className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-all min-h-[46px] cursor-pointer ${
               activeTab === 'config'
                 ? 'bg-blue-600/20 text-blue-400 font-bold'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Settings className={`w-5 h-5 mb-0.5 ${activeTab === 'config' ? 'text-blue-400' : ''}`} />
-            <span className="text-[11px] leading-none">Ajustes</span>
+            <Settings className={`w-4 h-4 mb-0.5 ${activeTab === 'config' ? 'text-blue-400' : ''}`} />
+            <span className="text-[10px] leading-none">Configuração</span>
           </button>
         </div>
       </nav>
