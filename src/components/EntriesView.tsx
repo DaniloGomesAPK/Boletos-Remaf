@@ -172,7 +172,7 @@ export const EntriesView: React.FC<EntriesViewProps> = ({
 
     if (favorecidoSelect.startsWith('forn-')) {
       const id = parseInt(favorecidoSelect.replace('forn-', ''), 10);
-      const sup = suppliers.find((s) => s.id === id);
+      const sup = suppliers.find((s) => s.id === id || String(s.id) === favorecidoSelect.replace('forn-', ''));
       if (sup) {
         favorecidoName = sup.name;
         favorecidoType = getTipoFavorecido(sup.name, employees, favorecidoSelect);
@@ -180,11 +180,29 @@ export const EntriesView: React.FC<EntriesViewProps> = ({
     } else if (favorecidoSelect.startsWith('func-')) {
       const cleanIdStr = favorecidoSelect.replace('func-', '').replace('-pagamento', '').replace('-adiantamento', '');
       const id = parseInt(cleanIdStr, 10);
-      const emp = employees.find((e) => e.id === id);
+      const emp = employees.find((e) => e.id === id || String(e.id) === cleanIdStr);
       if (emp) {
         favorecidoName = emp.name;
         favorecidoType = getTipoFavorecido(emp.name, employees, favorecidoSelect);
       }
+    } else {
+      const sup = suppliers.find((s) => String(s.id) === favorecidoSelect || s.name.toLowerCase() === favorecidoSelect.toLowerCase());
+      if (sup) {
+        favorecidoName = sup.name;
+        favorecidoType = 'Fornecedor';
+      } else {
+        const emp = employees.find((e) => String(e.id) === favorecidoSelect || e.name.toLowerCase() === favorecidoSelect.toLowerCase());
+        if (emp) {
+          favorecidoName = emp.name;
+          favorecidoType = 'Funcionário';
+        } else {
+          favorecidoName = favorecidoSelect;
+        }
+      }
+    }
+
+    if (!favorecidoName || favorecidoName.trim() === '' || favorecidoName.trim().toLowerCase() === 'fornecedor') {
+      favorecidoName = 'Fornecedor não informado';
     }
 
     onAddEntry({

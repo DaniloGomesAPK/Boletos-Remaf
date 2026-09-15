@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { CalculatedEntry, EntitySummary, Supplier, Employee, IncomeEntry } from '../types';
-import { formatBRL, calculateSummaries, MONTHS_PT, getMonthYearFromDateStr } from '../utils/calculations';
+import { formatBRL, calculateSummaries, MONTHS_PT, getMonthYearFromDateStr, parseBRDate, getTodayDateString } from '../utils/calculations';
 import {
   AlertTriangle,
   Calendar,
@@ -21,6 +21,10 @@ import {
   Activity,
   ShieldAlert,
   Percent,
+  Clock,
+  ArrowRight,
+  FileText,
+  AlertCircle,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -39,13 +43,20 @@ interface DashboardProps {
   suppliers: Supplier[];
   employees: Employee[];
   incomes?: IncomeEntry[];
+  onViewUpcomingDetails?: () => void;
 }
 
 const STORAGE_KEY_MODE = 'contas_pagar_period_mode'; // 'MONTH' | 'ALL'
 const STORAGE_KEY_MONTH = 'contas_pagar_period_month'; // e.g. 8
 const STORAGE_KEY_YEAR = 'contas_pagar_period_year'; // e.g. 2026
 
-export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employees, incomes = [] }) => {
+export const Dashboard: React.FC<DashboardProps> = ({
+  entries,
+  suppliers,
+  employees,
+  incomes = [],
+  onViewUpcomingDetails,
+}) => {
   // Current real date defaults
   const today = new Date();
   const currentMonthNum = today.getMonth() + 1; // 1-12
@@ -343,6 +354,54 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
       verdict: 'Alerta de risco de liquidez: As entradas previstas no período são insuficientes para honrar a totalidade dos compromissos futuros.',
     };
   }, [futureCommitments, coverageRatio, netBalancePeriod, totalOverdue]);
+
+  // Indicador Financeiro: "Vencimentos Próximos 7 Dias"
+  // Regras:
+  // - Calcular automaticamente considerando a data atual até +7 dias.
+  // - Considerar somente lançamentos com status "À Vencer".
+  // - Somar os valores das contas dentro desse período.
+  // - Ordenação: 1º vencimento mais próximo; 2º maior valor.
+  const todayStr = useMemo(() => getTodayDateString(), []);
+
+  const maxDueDateStr = useMemo(() => {
+    const [y, m, d] = todayStr.split('-').map(Number);
+    const targetDate = new Date(y, m - 1, d + 7);
+    const y7 = targetDate.getFullYear();
+    const m7 = String(targetDate.getMonth() + 1).padStart(2, '0');
+    const d7 = String(targetDate.getDate()).padStart(2, '0');
+    return `${y7}-${m7}-${d7}`;
+  }, [todayStr]);
+
+  const upcoming7DaysEntries = useMemo(() => {
+    return entries
+      .filter((e) => {
+        if (e.status !== 'À Vencer') return false;
+        return e.dueDate >= todayStr && e.dueDate <= maxDueDateStr;
+      })
+      .sort((a, b) => {
+        // Primeiro vencimento mais próximo (ordem cronológica crescente)
+        if (a.dueDate !== b.dueDate) {
+          return a.dueDate.localeCompare(b.dueDate);
+        }
+        // Depois maior valor (ordem decrescente de montante)
+        return (b.totalWithInterest || 0) - (a.totalWithInterest || 0);
+      });
+  }, [entries, todayStr, maxDueDateStr]);
+
+  const totalUpcoming7Days = useMemo(() => {
+    return upcoming7DaysEntries.reduce((sum, e) => sum + (e.totalWithInterest || 0), 0);
+  }, [upcoming7DaysEntries]);
+
+  const countUpcoming7Days = upcoming7DaysEntries.length;
+
+  const getDaysUntilDue = (dueDateStr: string, fromDateStr: string): number => {
+    const [y1, m1, d1] = fromDateStr.split('-').map(Number);
+    const [y2, m2, d2] = dueDateStr.split('-').map(Number);
+    const date1 = new Date(y1, m1 - 1, d1).getTime();
+    const date2 = new Date(y2, m2 - 1, d2).getTime();
+    const diffTime = date2 - date1;
+    return Math.round(diffTime / (1000 * 60 * 60 * 24));
+  };
 
   // Resumo de entidades (utilizado no gráfico Top 5 Favorecidos)
   const entitySummaries = useMemo(() => {
@@ -1029,8 +1088,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
           </div>
         </div>
 
-        {/* 3 Pilares Executivos: Saldo Operacional | Compromissos Futuros | Cobertura Financeira */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-4">
+        {/* 4 Pilares Executivos: Saldo Operacional | Compromissos Futuros | Cobertura Financeira | Vencimentos Próximos 7 Dias */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5 pt-4">
           {/* Pilar 1: Saldo Operacional */}
           <div className="bg-white dark:bg-slate-900/90 rounded-lg p-3.5 border border-slate-200/90 dark:border-slate-800 shadow-2xs flex flex-col justify-between space-y-2.5">
             <div className="flex items-center justify-between">
@@ -1172,6 +1231,59 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
                   Sem passivos pendentes registrados no período.
                 </span>
               )}
+            </div>
+          </div>
+
+          {/* Pilar 4: Vencimentos Próximos 7 Dias */}
+          <div
+            id="card-vencimentos-proximos-7-dias"
+            className="bg-white dark:bg-slate-900/90 rounded-lg p-3.5 border border-slate-200/90 dark:border-slate-800 shadow-2xs flex flex-col justify-between space-y-2.5"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                Vencimentos Próximos 7 Dias
+              </span>
+              <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 font-mono">
+                {countUpcoming7Days} {countUpcoming7Days === 1 ? 'conta' : 'contas'}
+              </span>
+            </div>
+
+            <div>
+              <div className="text-xl sm:text-2xl font-black font-mono tracking-tight tabular-nums text-slate-900 dark:text-white">
+                {formatBRL(totalUpcoming7Days)}
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                Volume de contas a vencer na próxima semana (hoje até +7 dias).
+              </p>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                {countUpcoming7Days > 0 ? (
+                  <span className="text-amber-700 dark:text-amber-400 font-semibold flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    Exige atenção
+                  </span>
+                ) : (
+                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                    Em dia
+                  </span>
+                )}
+              </span>
+              <button
+                type="button"
+                id="btn-ver-detalhes-proximos-7-dias"
+                onClick={() => {
+                  if (onViewUpcomingDetails) {
+                    onViewUpcomingDetails();
+                  }
+                }}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors cursor-pointer py-0.5 px-2 rounded hover:bg-blue-50 dark:hover:bg-blue-950/40"
+              >
+                Exibir detalhes
+                <ArrowRight className="w-3 h-3" />
+              </button>
             </div>
           </div>
         </div>

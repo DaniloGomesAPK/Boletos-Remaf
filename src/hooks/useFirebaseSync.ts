@@ -12,6 +12,7 @@ import {
   onSnapshot,
 } from '../lib/firebase';
 import { Entry, Supplier, Employee, IncomeEntry } from '../types';
+import { parseCurrencyInput } from '../utils/calculations';
 
 interface FirebaseSyncParams {
   setRawEntries: React.Dispatch<React.SetStateAction<Entry[]>>;
@@ -81,17 +82,61 @@ export function useFirebaseSync({
         updateSyncTimestamp();
         const fetchedEntries: Entry[] = snapshot.docs.map((d) => {
           const data = d.data();
+          const docIdNum = Number(data.id ?? d.id.replace(/^.*_entry_/, ''));
+
+          // Value parsing: supports data.value, data.valor, data.amount, data.total
+          const rawVal = data.value !== undefined && data.value !== null && data.value !== ''
+            ? data.value
+            : (data.valor !== undefined && data.valor !== null && data.valor !== ''
+              ? data.valor
+              : (data.amount !== undefined && data.amount !== null && data.amount !== ''
+                ? data.amount
+                : (data.total !== undefined && data.total !== null && data.total !== ''
+                  ? data.total
+                  : 0)));
+          const parsedVal = typeof rawVal === 'number' && !isNaN(rawVal) ? rawVal : parseCurrencyInput(rawVal);
+          const safeVal = !isNaN(parsedVal) && parsedVal >= 0 ? parsedVal : 0;
+
+          // Favorecido name extraction: supports multiple common field aliases
+          const rawName = (
+            data.favorecidoName ||
+            data.supplierName ||
+            data.fornecedor ||
+            data.fornecedorNome ||
+            data.favorecido ||
+            data.nome ||
+            data.nomeFavorecido ||
+            data.name ||
+            data.razaoSocial ||
+            ''
+          ).toString().trim();
+
+          const rawFavorecidoId = (data.favorecidoId || data.supplierId || data.fornecedorId || '').toString().trim();
+
+          let rawFavorecidoType = (data.favorecidoType || data.tipoFavorecido || '').toString().trim();
+          if (rawFavorecidoType !== 'Fornecedor' && rawFavorecidoType !== 'Funcionário') {
+            rawFavorecidoType = rawFavorecidoId.startsWith('func-') ? 'Funcionário' : 'Fornecedor';
+          }
+
+          const rawDocType = (data.docType || data.tipoDocumento || data.tipoDoc || 'Boleto').toString().trim();
+          const rawDueDate = (data.dueDate || data.dataVencimento || data.vencimento || '').toString().trim();
+          const rawNfNumber = (data.nfNumber || data.numeroNF || data.notaFiscal || '').toString().trim();
+          const rawPaymentDate = (data.paymentDate || data.dataPagamento || '').toString().trim();
+          const rawInterest = typeof data.interestRate === 'number' && !isNaN(data.interestRate)
+            ? data.interestRate
+            : parseCurrencyInput(data.interestRate ?? data.juros ?? 0);
+
           return {
-            id: Number(data.id ?? d.id),
-            favorecidoId: data.favorecidoId || '',
-            favorecidoName: data.favorecidoName || '',
-            favorecidoType: data.favorecidoType || 'Fornecedor',
-            docType: data.docType || 'Boleto',
-            nfNumber: data.nfNumber || '',
-            dueDate: data.dueDate || '',
-            value: Number(data.value || 0),
-            paymentDate: data.paymentDate || '',
-            interestRate: Number(data.interestRate || 0),
+            id: isNaN(docIdNum) ? Date.now() : docIdNum,
+            favorecidoId: rawFavorecidoId,
+            favorecidoName: rawName,
+            favorecidoType: rawFavorecidoType as 'Fornecedor' | 'Funcionário',
+            docType: rawDocType,
+            nfNumber: rawNfNumber,
+            dueDate: rawDueDate,
+            value: safeVal,
+            paymentDate: rawPaymentDate,
+            interestRate: !isNaN(rawInterest) ? rawInterest : 0,
           };
         });
         fetchedEntries.sort((a, b) => b.id - a.id);
@@ -188,11 +233,22 @@ export function useFirebaseSync({
     }
     setIsSyncing(true);
     try {
+      const parsedVal = typeof entry.value === 'number' && !isNaN(entry.value)
+        ? entry.value
+        : parseCurrencyInput(entry.value ?? 0);
+      const safeValue = !isNaN(parsedVal) && parsedVal >= 0 ? parsedVal : 0;
+      const safeFavorecidoName = (entry.favorecidoName || '').trim() || 'Fornecedor não informado';
+
       const docRef = doc(db, 'entries', `${user.uid}_entry_${entry.id}`);
       await setDoc(
         docRef,
         {
           ...entry,
+          favorecidoName: safeFavorecidoName,
+          value: safeValue,
+          valor: safeValue, // backward-compat alias
+          favorecidoType: entry.favorecidoType || 'Fornecedor',
+          docType: entry.docType || 'Boleto',
           userId: user.uid,
           updatedAt: new Date().toISOString(),
         },

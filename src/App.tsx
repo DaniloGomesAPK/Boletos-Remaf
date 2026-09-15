@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Supplier, Employee, Entry, CalculatedEntry, PaymentType, IncomeEntry } from './types';
-import { calculateEntryDetails, exportToCSV, getTodayDateString } from './utils/calculations';
+import { calculateEntryDetails, exportToCSV, getTodayDateString, parseCurrencyInput } from './utils/calculations';
 import { Navbar } from './components/Navbar';
 import { Dashboard } from './components/Dashboard';
 import { EntriesView } from './components/EntriesView';
 import { SupplierReportView } from './components/SupplierReportView';
 import { ConfigView } from './components/ConfigView';
+import { Upcoming7DaysView } from './components/Upcoming7DaysView';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AuthModal } from './components/AuthModal';
 import { LoginView } from './components/LoginView';
@@ -14,7 +15,7 @@ import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 function AppContent() {
   const { user, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'entries' | 'suppliers' | 'config'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'entries' | 'suppliers' | 'config' | 'upcoming-details'>('dashboard');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('theme_preference') === 'dark';
@@ -72,32 +73,122 @@ function AppContent() {
   // Dynamically calculate statuses, interest, and totals in memory
   const calculatedEntries: CalculatedEntry[] = useMemo(() => {
     const today = getTodayDateString();
-    return rawEntries.map((e) => calculateEntryDetails(e, today));
-  }, [rawEntries]);
+    return rawEntries.map((raw) => {
+      // 1. Cross-reference suppliers and employees to resolve favorecidoName if empty or generic
+      let resolvedFavorecidoName = (raw.favorecidoName || '').trim();
+      let resolvedFavorecidoType = raw.favorecidoType;
+
+      if (!resolvedFavorecidoName || resolvedFavorecidoName.toLowerCase() === 'fornecedor') {
+        if (raw.favorecidoId) {
+          if (raw.favorecidoId.startsWith('forn-')) {
+            const numId = parseInt(raw.favorecidoId.replace('forn-', ''), 10);
+            const sup = suppliers.find((s) => s.id === numId || String(s.id) === raw.favorecidoId.replace('forn-', ''));
+            if (sup?.name) {
+              resolvedFavorecidoName = sup.name;
+              resolvedFavorecidoType = 'Fornecedor';
+            }
+          } else if (raw.favorecidoId.startsWith('func-')) {
+            const cleanIdStr = raw.favorecidoId.replace('func-', '').replace('-pagamento', '').replace('-adiantamento', '');
+            const numId = parseInt(cleanIdStr, 10);
+            const emp = employees.find((e) => e.id === numId || String(e.id) === cleanIdStr);
+            if (emp?.name) {
+              resolvedFavorecidoName = emp.name;
+              resolvedFavorecidoType = 'Funcionário';
+            }
+          } else {
+            const sup = suppliers.find((s) => String(s.id) === raw.favorecidoId || s.name.toLowerCase() === raw.favorecidoId.toLowerCase());
+            if (sup?.name) {
+              resolvedFavorecidoName = sup.name;
+              resolvedFavorecidoType = 'Fornecedor';
+            } else {
+              const emp = employees.find((e) => String(e.id) === raw.favorecidoId || e.name.toLowerCase() === raw.favorecidoId.toLowerCase());
+              if (emp?.name) {
+                resolvedFavorecidoName = emp.name;
+                resolvedFavorecidoType = 'Funcionário';
+              }
+            }
+          }
+        }
+      }
+
+      const parsedVal = typeof raw.value === 'number' && !isNaN(raw.value)
+        ? raw.value
+        : parseCurrencyInput(raw.value || 0);
+      const safeVal = !isNaN(parsedVal) && parsedVal >= 0 ? parsedVal : 0;
+
+      const cleanEntry: Entry = {
+        ...raw,
+        favorecidoName: resolvedFavorecidoName || 'Fornecedor não informado',
+        favorecidoType: resolvedFavorecidoType || (raw.favorecidoId?.startsWith('func-') ? 'Funcionário' : 'Fornecedor'),
+        docType: raw.docType || 'Boleto',
+        value: safeVal,
+      };
+
+      return calculateEntryDetails(cleanEntry, today);
+    });
+  }, [rawEntries, suppliers, employees]);
 
   // Entry Operations (Direct Cloud Firestore)
   const handleAddEntry = async (newEntryData: Omit<Entry, 'id'>) => {
     const maxId = rawEntries.reduce((max, e) => Math.max(max, e.id), 0);
+    let resolvedName = (newEntryData.favorecidoName || '').trim();
+    if (!resolvedName || resolvedName.toLowerCase() === 'fornecedor') {
+      if (newEntryData.favorecidoId?.startsWith('forn-')) {
+        const id = parseInt(newEntryData.favorecidoId.replace('forn-', ''), 10);
+        const sup = suppliers.find((s) => s.id === id);
+        if (sup) resolvedName = sup.name;
+      } else if (newEntryData.favorecidoId?.startsWith('func-')) {
+        const cleanId = newEntryData.favorecidoId.replace('func-', '').replace('-pagamento', '').replace('-adiantamento', '');
+        const id = parseInt(cleanId, 10);
+        const emp = employees.find((e) => e.id === id);
+        if (emp) resolvedName = emp.name;
+      }
+    }
+    const numValue = typeof newEntryData.value === 'number' && !isNaN(newEntryData.value)
+      ? newEntryData.value
+      : parseCurrencyInput(newEntryData.value || 0);
+
     const newEntry: Entry = {
       ...newEntryData,
       id: maxId > 0 ? maxId + 1 : Date.now(),
+      favorecidoName: resolvedName || 'Fornecedor não informado',
+      value: !isNaN(numValue) && numValue >= 0 ? numValue : 0,
+      docType: newEntryData.docType || 'Boleto',
+      favorecidoType: newEntryData.favorecidoType || 'Fornecedor',
     };
     await saveEntryToFirestore(newEntry);
     showToast('Boleto/Lançamento salvo no Firestore com sucesso!');
   };
 
   const handleUpdateEntry = async (updated: CalculatedEntry) => {
+    let resolvedName = (updated.favorecidoName || '').trim();
+    if (!resolvedName || resolvedName.toLowerCase() === 'fornecedor') {
+      if (updated.favorecidoId?.startsWith('forn-')) {
+        const id = parseInt(updated.favorecidoId.replace('forn-', ''), 10);
+        const sup = suppliers.find((s) => s.id === id);
+        if (sup) resolvedName = sup.name;
+      } else if (updated.favorecidoId?.startsWith('func-')) {
+        const cleanId = updated.favorecidoId.replace('func-', '').replace('-pagamento', '').replace('-adiantamento', '');
+        const id = parseInt(cleanId, 10);
+        const emp = employees.find((e) => e.id === id);
+        if (emp) resolvedName = emp.name;
+      }
+    }
+    const numValue = typeof updated.value === 'number' && !isNaN(updated.value)
+      ? updated.value
+      : parseCurrencyInput(updated.value || 0);
+
     const raw: Entry = {
       id: updated.id,
       favorecidoId: updated.favorecidoId,
-      favorecidoName: updated.favorecidoName,
-      favorecidoType: updated.favorecidoType,
-      docType: updated.docType,
-      nfNumber: updated.nfNumber,
+      favorecidoName: resolvedName || 'Fornecedor não informado',
+      favorecidoType: updated.favorecidoType || 'Fornecedor',
+      docType: updated.docType || 'Boleto',
+      nfNumber: updated.nfNumber || '',
       dueDate: updated.dueDate,
-      value: updated.value,
-      paymentDate: updated.paymentDate,
-      interestRate: updated.interestRate,
+      value: !isNaN(numValue) && numValue >= 0 ? numValue : 0,
+      paymentDate: updated.paymentDate || '',
+      interestRate: updated.interestRate || 0,
     };
     await saveEntryToFirestore(raw);
     showToast('Lançamento atualizado no Firestore com sucesso!');
@@ -373,6 +464,14 @@ function AppContent() {
             suppliers={suppliers}
             employees={employees}
             incomes={incomes}
+            onViewUpcomingDetails={() => setActiveTab('upcoming-details')}
+          />
+        )}
+
+        {activeTab === 'upcoming-details' && (
+          <Upcoming7DaysView
+            entries={calculatedEntries}
+            onBack={() => setActiveTab('dashboard')}
           />
         )}
 
