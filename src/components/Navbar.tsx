@@ -13,7 +13,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 
 interface NavbarProps {
-  activeTab: 'dashboard' | 'entries' | 'suppliers' | 'config' | 'upcoming-details';
+  activeTab: 'dashboard' | 'entries' | 'suppliers' | 'config' | 'upcoming-details' | 'overdue-details' | 'to-pay-details';
   setActiveTab: (tab: 'dashboard' | 'entries' | 'suppliers' | 'config') => void;
   onLogout?: () => void;
   isSyncing?: boolean;
@@ -84,7 +84,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={() => setActiveTab('dashboard')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                  activeTab === 'dashboard' || activeTab === 'upcoming-details'
+                  activeTab === 'dashboard' ||
+                  activeTab === 'upcoming-details' ||
+                  activeTab === 'overdue-details' ||
+                  activeTab === 'to-pay-details'
                     ? 'bg-blue-600 text-white shadow-xs'
                     : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
                 }`}
@@ -211,12 +214,24 @@ export const Navbar: React.FC<NavbarProps> = ({
             type="button"
             onClick={() => setActiveTab('dashboard')}
             className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-all min-h-[46px] cursor-pointer ${
-              activeTab === 'dashboard' || activeTab === 'upcoming-details'
+              activeTab === 'dashboard' ||
+              activeTab === 'upcoming-details' ||
+              activeTab === 'overdue-details' ||
+              activeTab === 'to-pay-details'
                 ? 'bg-blue-600/20 text-blue-400 font-bold'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <LayoutDashboard className={`w-4 h-4 mb-0.5 ${activeTab === 'dashboard' || activeTab === 'upcoming-details' ? 'text-blue-400' : ''}`} />
+            <LayoutDashboard
+              className={`w-4 h-4 mb-0.5 ${
+                activeTab === 'dashboard' ||
+                activeTab === 'upcoming-details' ||
+                activeTab === 'overdue-details' ||
+                activeTab === 'to-pay-details'
+                  ? 'text-blue-400'
+                  : ''
+              }`}
+            />
             <span className="text-[10px] leading-none">Dashboard</span>
           </button>
 

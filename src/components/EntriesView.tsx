@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Entry, CalculatedEntry, Supplier, Employee, DocumentType, EntryStatus, IncomeEntry } from '../types';
+import React, { useState, useMemo } from 'react';
+import { Entry, CalculatedEntry, Supplier, Employee, DocumentType, EntryStatus, IncomeEntry, PaymentType } from '../types';
 import { parseBRDate, formatBRL, getTodayDateString, getTipoFavorecido, parseCurrencyInput } from '../utils/calculations';
 import {
   PlusCircle,
@@ -91,11 +91,28 @@ export const EntriesView: React.FC<EntriesViewProps> = ({
   // Edit Modal State
   const [editingEntry, setEditingEntry] = useState<CalculatedEntry | null>(null);
 
-  // Sorted suppliers and employees
-  const sortedSuppliers = [...suppliers].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-  const sortedEmployees = [...employees].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-  const paymentEmployees = sortedEmployees.filter((emp) => emp.paymentType === 'Pagamento');
-  const advanceEmployees = sortedEmployees.filter((emp) => emp.paymentType === 'Adiantamento');
+  // Estado do Tipo de Lançamento quando um funcionário é selecionado
+  const [employeePaymentType, setEmployeePaymentType] = useState<PaymentType>('Pagamento');
+
+  // Sorted suppliers
+  const sortedSuppliers = useMemo(
+    () => [...suppliers].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+    [suppliers]
+  );
+
+  // 1. Mostrar cada funcionário apenas uma vez (sem duplicatas)
+  const uniqueEmployees = useMemo(() => {
+    const map = new Map<string, Employee>();
+    for (const emp of employees) {
+      const key = emp.name.trim().toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, emp);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [employees]);
+
+  const isEmployeeSelected = favorecidoSelect.startsWith('func-');
 
   const handleStatusFilterChange = (newStatus: 'Todos' | EntryStatus) => {
     setStatusFilter(newStatus);
@@ -111,11 +128,29 @@ export const EntriesView: React.FC<EntriesViewProps> = ({
 
   const handleFavorecidoSelectChange = (val: string) => {
     setFavorecidoSelect(val);
-    if (val.endsWith('-pagamento')) {
-      setDocType('Pagamento');
-    } else if (val.endsWith('-adiantamento')) {
-      setDocType('Adiantamento');
+    if (val.startsWith('func-')) {
+      const cleanId = val.replace('func-', '').split('-')[0];
+      const emp = employees.find((e) => String(e.id) === cleanId || e.id === parseInt(cleanId, 10));
+      const initialType: PaymentType = emp?.paymentType || employeePaymentType || 'Pagamento';
+      setEmployeePaymentType(initialType);
+      // 3. Usar essa escolha para definir automaticamente o tipo do documento do lançamento
+      setDocType(initialType as DocumentType);
+    } else if (val.startsWith('forn-')) {
+      if (
+        docType === 'Pagamento' ||
+        docType === 'Adiantamento' ||
+        docType === 'Férias' ||
+        docType === 'Rescisão'
+      ) {
+        setDocType('Boleto');
+      }
     }
+  };
+
+  const handleEmployeePaymentTypeChange = (newType: PaymentType) => {
+    setEmployeePaymentType(newType);
+    // 3. Usar essa escolha para definir automaticamente o tipo do documento do lançamento
+    setDocType(newType as DocumentType);
   };
 
   const handleValueBlur = () => {
@@ -178,9 +213,11 @@ export const EntriesView: React.FC<EntriesViewProps> = ({
         favorecidoType = getTipoFavorecido(sup.name, employees, favorecidoSelect);
       }
     } else if (favorecidoSelect.startsWith('func-')) {
-      const cleanIdStr = favorecidoSelect.replace('func-', '').replace('-pagamento', '').replace('-adiantamento', '');
+      const cleanIdStr = favorecidoSelect.replace('func-', '').split('-')[0];
       const id = parseInt(cleanIdStr, 10);
-      const emp = employees.find((e) => e.id === id || String(e.id) === cleanIdStr);
+      const emp =
+        employees.find((e) => e.id === id || String(e.id) === cleanIdStr) ||
+        uniqueEmployees.find((e) => e.id === id || String(e.id) === cleanIdStr);
       if (emp) {
         favorecidoName = emp.name;
         favorecidoType = getTipoFavorecido(emp.name, employees, favorecidoSelect);
@@ -218,6 +255,9 @@ export const EntriesView: React.FC<EntriesViewProps> = ({
     });
 
     // Reset Form
+    setFavorecidoSelect('');
+    setEmployeePaymentType('Pagamento');
+    setDocType('Boleto');
     setNfNumber('');
     setValue('');
     setPaymentDate('');
@@ -712,37 +752,60 @@ export const EntriesView: React.FC<EntriesViewProps> = ({
                         </option>
                       ))}
                     </optgroup>
-                    <optgroup label="Funcionários - Pagamentos">
-                      {paymentEmployees.map((emp) => (
-                        <option key={`func-${emp.id}-pagamento`} value={`func-${emp.id}-pagamento`}>
-                          [Func] {emp.name} - Pagamento
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Funcionários - Adiantamentos">
-                      {advanceEmployees.map((emp) => (
-                        <option key={`func-${emp.id}-adiantamento`} value={`func-${emp.id}-adiantamento`}>
-                          [Func] {emp.name} - Adiantamento
+                    <optgroup label="Funcionários">
+                      {uniqueEmployees.map((emp) => (
+                        <option key={`func-${emp.id}`} value={`func-${emp.id}`}>
+                          {emp.name}
                         </option>
                       ))}
                     </optgroup>
                   </select>
                 </div>
 
+                {/* 2. Ao selecionar o funcionário, abrir uma segunda opção: Tipo de lançamento */}
+                {isEmployeeSelected && (
+                  <div>
+                    <label className="block text-[11px] font-semibold text-blue-700 dark:text-blue-400 mb-0.5">
+                      Tipo de lançamento <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={employeePaymentType}
+                      onChange={(e) => handleEmployeePaymentTypeChange(e.target.value as PaymentType)}
+                      className="w-full px-2.5 py-1 bg-white dark:bg-slate-800 border-2 border-blue-500 dark:border-blue-500 rounded text-xs text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none h-7.5 font-medium"
+                      required
+                    >
+                      <option value="Pagamento">Pagamento</option>
+                      <option value="Adiantamento">Adiantamento</option>
+                      <option value="Férias">Férias</option>
+                      <option value="Rescisão">Rescisão</option>
+                    </select>
+                  </div>
+                )}
+
                 {/* Tipo Documento */}
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-0.5">
-                    Tipo Documento
+                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-0.5 flex items-center justify-between">
+                    <span>Tipo Documento</span>
+                    {isEmployeeSelected && (
+                      <span className="text-[10px] text-blue-600 dark:text-blue-400 font-normal">(Automático)</span>
+                    )}
                   </label>
                   <select
                     value={docType}
+                    disabled={isEmployeeSelected}
                     onChange={(e) => setDocType(e.target.value as DocumentType)}
-                    className="w-full px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none h-7.5"
+                    className={`w-full px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none h-7.5 ${
+                      isEmployeeSelected
+                        ? 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 cursor-not-allowed'
+                        : ''
+                    }`}
                   >
                     <option value="Boleto">Boleto</option>
                     <option value="Nota Fiscal">Nota Fiscal</option>
                     <option value="Adiantamento">Adiantamento</option>
                     <option value="Pagamento">Pagamento</option>
+                    <option value="Férias">Férias</option>
+                    <option value="Rescisão">Rescisão</option>
                     <option value="Outros">Outros</option>
                   </select>
                 </div>

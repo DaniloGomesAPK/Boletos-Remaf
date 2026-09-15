@@ -138,12 +138,12 @@ export const Upcoming7DaysView: React.FC<Upcoming7DaysViewProps> = ({ entries, o
                 <Calendar className="w-5 h-5" />
               </span>
               <div>
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-black dark:text-white">
                   Vencimentos Próximos 7 Dias
                 </h1>
-                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex items-center gap-1 mt-0.5">
+                <p className="text-xs sm:text-sm text-black dark:text-slate-300 flex items-center gap-1 mt-0.5">
                   <span>Período:</span>
-                  <strong className="text-slate-900 dark:text-white font-semibold">
+                  <strong className="text-black dark:text-white font-bold">
                     {parseBRDate(todayStr)} até {parseBRDate(maxDueDateStr)}
                   </strong>
                 </p>
@@ -151,8 +151,8 @@ export const Upcoming7DaysView: React.FC<Upcoming7DaysViewProps> = ({ entries, o
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium">
+          <div className="flex items-center gap-2 text-xs text-black dark:text-slate-400">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-black dark:text-slate-300 font-bold">
               <Clock className="w-3.5 h-3.5 text-blue-500" />
               Janela de 7 dias
             </span>
@@ -164,47 +164,47 @@ export const Upcoming7DaysView: React.FC<Upcoming7DaysViewProps> = ({ entries, o
           {/* Card 1: Total a Vencer */}
           <div className="p-4 rounded-xl bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/40">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase tracking-wider">
+              <span className="text-xs font-bold text-black dark:text-amber-300 uppercase tracking-wider">
                 Total a vencer
               </span>
               <DollarSign className="w-4 h-4 text-amber-600 dark:text-amber-400" />
             </div>
-            <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-slate-900 dark:text-white mt-1 tabular-nums">
+            <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-black dark:text-white mt-1 tabular-nums">
               {formatBRL(totalUpcoming)}
             </div>
-            <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
+            <p className="text-[11px] text-black dark:text-slate-400 mt-1 font-medium">
               Montante financeiro a ser quitado na próxima semana
             </p>
           </div>
 
           {/* Card 2: Quantidade de Contas */}
-          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80">
+          <div className="p-4 rounded-xl bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+              <span className="text-xs font-bold text-black dark:text-slate-300 uppercase tracking-wider">
                 Quantidade de contas
               </span>
-              <Receipt className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+              <Receipt className="w-4 h-4 text-black dark:text-slate-400" />
             </div>
-            <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-slate-900 dark:text-white mt-1 tabular-nums">
+            <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-black dark:text-white mt-1 tabular-nums">
               {totalCount}
             </div>
-            <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
+            <p className="text-[11px] text-black dark:text-slate-400 mt-1 font-medium">
               {totalCount === 1 ? '1 conta programada' : `${totalCount} contas programadas`}
             </p>
           </div>
 
           {/* Card 3: Contas Vencendo Hoje */}
-          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 sm:col-span-2 lg:col-span-1">
+          <div className="p-4 rounded-xl bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 sm:col-span-2 lg:col-span-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+              <span className="text-xs font-bold text-black dark:text-slate-300 uppercase tracking-wider">
                 Vencem hoje
               </span>
               <AlertCircle className={`w-4 h-4 ${todayEntriesCount > 0 ? 'text-rose-500' : 'text-emerald-500'}`} />
             </div>
-            <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-slate-900 dark:text-white mt-1 tabular-nums">
+            <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-black dark:text-white mt-1 tabular-nums">
               {formatBRL(todayEntriesTotal)}
             </div>
-            <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
+            <p className="text-[11px] text-black dark:text-slate-400 mt-1 font-medium">
               {todayEntriesCount === 0
                 ? 'Nenhum pagamento programado para hoje'
                 : `${todayEntriesCount} ${todayEntriesCount === 1 ? 'conta com vencimento hoje' : 'contas com vencimento hoje'}`}
@@ -358,11 +358,11 @@ export const Upcoming7DaysView: React.FC<Upcoming7DaysViewProps> = ({ entries, o
                         <Building2 className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-black dark:text-slate-300 block">
                           Fornecedor
                         </span>
                         <h3
-                          className="font-bold text-sm sm:text-base text-slate-900 dark:text-white truncate"
+                          className="font-black text-sm sm:text-base text-black dark:text-white truncate"
                           title={fornecedorNome}
                         >
                           {fornecedorNome}
@@ -372,57 +372,57 @@ export const Upcoming7DaysView: React.FC<Upcoming7DaysViewProps> = ({ entries, o
 
                     {/* Badge de Status: Vence hoje / Próximo vencimento */}
                     <span
-                      className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider shrink-0 border ${
+                      className={`inline-flex items-center gap-1 text-[11px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shrink-0 border-2 ${
                         isToday
-                          ? 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/90 dark:text-rose-300 dark:border-rose-800 animate-pulse'
+                          ? 'bg-rose-100 text-black border-rose-300 dark:bg-rose-950/90 dark:text-rose-200 dark:border-rose-800 animate-pulse'
                           : daysUntil === 1
-                          ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/90 dark:text-amber-300 dark:border-amber-800'
-                          : 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-900/60'
+                          ? 'bg-amber-100 text-black border-amber-300 dark:bg-amber-950/90 dark:text-amber-200 dark:border-amber-800'
+                          : 'bg-blue-50 text-black border-blue-200 dark:bg-blue-950/70 dark:text-blue-200 dark:border-blue-900/60'
                       }`}
                     >
-                      {isToday && <AlertCircle className="w-3 h-3" />}
+                      {isToday && <AlertCircle className="w-3 h-3 text-black dark:text-rose-300" />}
                       <span>{statusTexto}</span>
                     </span>
                   </div>
 
                   {/* Informações Centrais: Documento e Vencimento */}
-                  <div className="grid grid-cols-2 gap-2 py-2.5 px-3 rounded-lg bg-white border border-slate-200 text-xs">
+                  <div className="grid grid-cols-2 gap-2 py-2.5 px-3 rounded-lg bg-white border border-slate-300 text-xs shadow-2xs">
                     <div className="min-w-0">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 block">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-black block">
                         Documento
                       </span>
-                      <div className="flex items-center gap-1.5 text-black font-semibold text-xs mt-0.5 min-w-0">
-                        <FileText className="w-3.5 h-3.5 text-slate-700 shrink-0" />
-                        <span className="truncate" title={documentoTexto}>
+                      <div className="flex items-center gap-1.5 text-black font-bold text-xs mt-0.5 min-w-0">
+                        <FileText className="w-3.5 h-3.5 text-black shrink-0" />
+                        <span className="truncate text-black" title={documentoTexto}>
                           {documentoTexto}
                         </span>
                       </div>
                     </div>
 
                     <div className="min-w-0">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 block">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-black block">
                         Data de Vencimento
                       </span>
-                      <div className="flex items-center gap-1.5 text-black font-semibold text-xs mt-0.5 min-w-0">
-                        <Calendar className="w-3.5 h-3.5 text-slate-700 shrink-0" />
-                        <span className="truncate">{dataVencimento}</span>
+                      <div className="flex items-center gap-1.5 text-black font-bold text-xs mt-0.5 min-w-0">
+                        <Calendar className="w-3.5 h-3.5 text-black shrink-0" />
+                        <span className="truncate text-black">{dataVencimento}</span>
                       </div>
                     </div>
                   </div>
 
                   {/* Rodapé do Card: Valor */}
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-800">
                     <div>
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-black dark:text-slate-300 block">
                         Valor
                       </span>
-                      <span className="text-lg sm:text-xl font-black font-mono tracking-tight text-slate-900 dark:text-white tabular-nums">
+                      <span className="text-lg sm:text-xl font-black font-mono tracking-tight text-black dark:text-white tabular-nums">
                         {valorFormatado}
                       </span>
                     </div>
 
                     {daysUntil > 0 && (
-                      <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                      <span className="text-[11px] font-bold text-black dark:text-slate-300">
                         {daysUntil === 1 ? 'Vence amanhã' : `Vence em ${daysUntil} dias`}
                       </span>
                     )}

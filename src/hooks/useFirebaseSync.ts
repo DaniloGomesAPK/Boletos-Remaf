@@ -11,7 +11,7 @@ import {
   where,
   onSnapshot,
 } from '../lib/firebase';
-import { Entry, Supplier, Employee, IncomeEntry } from '../types';
+import { Entry, Supplier, Employee, IncomeEntry, PaymentType } from '../types';
 import { parseCurrencyInput } from '../utils/calculations';
 
 interface FirebaseSyncParams {
@@ -181,7 +181,9 @@ export function useFirebaseSync({
           return {
             id: Number(data.id ?? d.id),
             name: data.name || '',
-            paymentType: data.paymentType === 'Adiantamento' ? 'Adiantamento' : 'Pagamento',
+            paymentType: (['Pagamento', 'Adiantamento', 'Férias', 'Rescisão'].includes(data.paymentType)
+              ? data.paymentType
+              : 'Pagamento') as PaymentType,
           };
         });
         fetchedEmployees.sort((a, b) => a.id - b.id);

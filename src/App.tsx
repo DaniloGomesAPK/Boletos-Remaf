@@ -7,6 +7,7 @@ import { EntriesView } from './components/EntriesView';
 import { SupplierReportView } from './components/SupplierReportView';
 import { ConfigView } from './components/ConfigView';
 import { Upcoming7DaysView } from './components/Upcoming7DaysView';
+import { StatusDetailsView } from './components/StatusDetailsView';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AuthModal } from './components/AuthModal';
 import { LoginView } from './components/LoginView';
@@ -15,7 +16,7 @@ import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 function AppContent() {
   const { user, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'entries' | 'suppliers' | 'config' | 'upcoming-details'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'entries' | 'suppliers' | 'config' | 'upcoming-details' | 'overdue-details' | 'to-pay-details'>('dashboard');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('theme_preference') === 'dark';
@@ -88,7 +89,7 @@ function AppContent() {
               resolvedFavorecidoType = 'Fornecedor';
             }
           } else if (raw.favorecidoId.startsWith('func-')) {
-            const cleanIdStr = raw.favorecidoId.replace('func-', '').replace('-pagamento', '').replace('-adiantamento', '');
+            const cleanIdStr = raw.favorecidoId.replace('func-', '').split('-')[0];
             const numId = parseInt(cleanIdStr, 10);
             const emp = employees.find((e) => e.id === numId || String(e.id) === cleanIdStr);
             if (emp?.name) {
@@ -138,7 +139,7 @@ function AppContent() {
         const sup = suppliers.find((s) => s.id === id);
         if (sup) resolvedName = sup.name;
       } else if (newEntryData.favorecidoId?.startsWith('func-')) {
-        const cleanId = newEntryData.favorecidoId.replace('func-', '').replace('-pagamento', '').replace('-adiantamento', '');
+        const cleanId = newEntryData.favorecidoId.replace('func-', '').split('-')[0];
         const id = parseInt(cleanId, 10);
         const emp = employees.find((e) => e.id === id);
         if (emp) resolvedName = emp.name;
@@ -168,7 +169,7 @@ function AppContent() {
         const sup = suppliers.find((s) => s.id === id);
         if (sup) resolvedName = sup.name;
       } else if (updated.favorecidoId?.startsWith('func-')) {
-        const cleanId = updated.favorecidoId.replace('func-', '').replace('-pagamento', '').replace('-adiantamento', '');
+        const cleanId = updated.favorecidoId.replace('func-', '').split('-')[0];
         const id = parseInt(cleanId, 10);
         const emp = employees.find((e) => e.id === id);
         if (emp) resolvedName = emp.name;
@@ -465,12 +466,30 @@ function AppContent() {
             employees={employees}
             incomes={incomes}
             onViewUpcomingDetails={() => setActiveTab('upcoming-details')}
+            onViewOverdueDetails={() => setActiveTab('overdue-details')}
+            onViewToPayDetails={() => setActiveTab('to-pay-details')}
           />
         )}
 
         {activeTab === 'upcoming-details' && (
           <Upcoming7DaysView
             entries={calculatedEntries}
+            onBack={() => setActiveTab('dashboard')}
+          />
+        )}
+
+        {activeTab === 'overdue-details' && (
+          <StatusDetailsView
+            entries={calculatedEntries}
+            type="overdue"
+            onBack={() => setActiveTab('dashboard')}
+          />
+        )}
+
+        {activeTab === 'to-pay-details' && (
+          <StatusDetailsView
+            entries={calculatedEntries}
+            type="to-pay"
             onBack={() => setActiveTab('dashboard')}
           />
         )}

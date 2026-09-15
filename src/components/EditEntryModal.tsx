@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { CalculatedEntry, DocumentType, Supplier, Employee } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { CalculatedEntry, DocumentType, Supplier, Employee, PaymentType } from '../types';
 import { getTipoFavorecido, parseCurrencyInput, formatBRL } from '../utils/calculations';
 import { X, Check, Trash2, AlertTriangle } from 'lucide-react';
 
@@ -26,19 +26,33 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
 
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const getInitialFavorecidoSelect = (favId?: string, dType?: string) => {
+  const getInitialFavorecidoSelect = (favId?: string, favName?: string) => {
     if (!favId) return '';
     if (favId.startsWith('func-')) {
-      if (favId.endsWith('-pagamento') || favId.endsWith('-adiantamento')) {
-        return favId;
+      const cleanId = favId.replace('func-', '').split('-')[0];
+      const found = employees.find((e) => String(e.id) === cleanId || e.id === parseInt(cleanId, 10));
+      if (found) return `func-${found.id}`;
+      if (favName) {
+        const foundByName = employees.find((e) => e.name.trim().toLowerCase() === favName.trim().toLowerCase());
+        if (foundByName) return `func-${foundByName.id}`;
       }
-      return dType === 'Adiantamento' ? `${favId}-adiantamento` : `${favId}-pagamento`;
+      return `func-${cleanId}`;
     }
     return favId;
   };
 
+  const getInitialEmployeePaymentType = (dType?: DocumentType): PaymentType => {
+    if (dType === 'Pagamento' || dType === 'Adiantamento' || dType === 'Férias' || dType === 'Rescisão') {
+      return dType;
+    }
+    return 'Pagamento';
+  };
+
   const [favorecidoSelect, setFavorecidoSelect] = useState(() =>
-    getInitialFavorecidoSelect(entry.favorecidoId, entry.docType)
+    getInitialFavorecidoSelect(entry.favorecidoId, entry.favorecidoName)
+  );
+  const [employeePaymentType, setEmployeePaymentType] = useState<PaymentType>(() =>
+    getInitialEmployeePaymentType(entry.docType)
   );
   const [docType, setDocType] = useState<DocumentType>(entry.docType);
   const [nfNumber, setNfNumber] = useState(entry.nfNumber || '');
@@ -49,14 +63,29 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
   const [paymentDate, setPaymentDate] = useState(entry.paymentDate || '');
   const [interestRate, setInterestRate] = useState(entry.interestRate.toString());
 
-  const sortedSuppliers = [...suppliers].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-  const sortedEmployees = [...employees].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-  const paymentEmployees = sortedEmployees.filter((emp) => emp.paymentType === 'Pagamento');
-  const advanceEmployees = sortedEmployees.filter((emp) => emp.paymentType === 'Adiantamento');
+  const sortedSuppliers = useMemo(
+    () => [...suppliers].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+    [suppliers]
+  );
+
+  // 1. Mostrar cada funcionário apenas uma vez (sem duplicatas)
+  const uniqueEmployees = useMemo(() => {
+    const map = new Map<string, Employee>();
+    for (const emp of employees) {
+      const key = emp.name.trim().toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, emp);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [employees]);
+
+  const isEmployeeSelected = favorecidoSelect.startsWith('func-');
 
   useEffect(() => {
     if (entry) {
-      setFavorecidoSelect(getInitialFavorecidoSelect(entry.favorecidoId, entry.docType));
+      setFavorecidoSelect(getInitialFavorecidoSelect(entry.favorecidoId, entry.favorecidoName));
+      setEmployeePaymentType(getInitialEmployeePaymentType(entry.docType));
       setDocType(entry.docType);
       setNfNumber(entry.nfNumber || '');
       setDueDate(entry.dueDate);
@@ -66,15 +95,33 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
       setPaymentDate(entry.paymentDate || '');
       setInterestRate(entry.interestRate.toString());
     }
-  }, [entry]);
+  }, [entry, employees]);
 
   const handleFavorecidoChange = (val: string) => {
     setFavorecidoSelect(val);
-    if (val.endsWith('-pagamento')) {
-      setDocType('Pagamento');
-    } else if (val.endsWith('-adiantamento')) {
-      setDocType('Adiantamento');
+    if (val.startsWith('func-')) {
+      const cleanId = val.replace('func-', '').split('-')[0];
+      const emp = employees.find((e) => String(e.id) === cleanId || e.id === parseInt(cleanId, 10));
+      const initialType: PaymentType = emp?.paymentType || employeePaymentType || 'Pagamento';
+      setEmployeePaymentType(initialType);
+      // 3. Usar essa escolha para definir automaticamente o tipo do documento do lançamento
+      setDocType(initialType as DocumentType);
+    } else if (val.startsWith('forn-')) {
+      if (
+        docType === 'Pagamento' ||
+        docType === 'Adiantamento' ||
+        docType === 'Férias' ||
+        docType === 'Rescisão'
+      ) {
+        setDocType('Boleto');
+      }
     }
+  };
+
+  const handleEmployeePaymentTypeChange = (newType: PaymentType) => {
+    setEmployeePaymentType(newType);
+    // 3. Usar essa escolha para definir automaticamente o tipo do documento do lançamento
+    setDocType(newType as DocumentType);
   };
 
   const handleValueBlur = () => {
@@ -122,9 +169,11 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
         favorecidoType = getTipoFavorecido(s.name, employees, favorecidoSelect);
       }
     } else if (favorecidoSelect.startsWith('func-')) {
-      const cleanIdStr = favorecidoSelect.replace('func-', '').replace('-pagamento', '').replace('-adiantamento', '');
+      const cleanIdStr = favorecidoSelect.replace('func-', '').split('-')[0];
       const id = parseInt(cleanIdStr, 10);
-      const emp = employees.find((e) => e.id === id || String(e.id) === cleanIdStr);
+      const emp =
+        employees.find((e) => e.id === id || String(e.id) === cleanIdStr) ||
+        uniqueEmployees.find((e) => e.id === id || String(e.id) === cleanIdStr);
       if (emp) {
         favorecidoName = emp.name;
         favorecidoType = getTipoFavorecido(emp.name, employees, favorecidoSelect);
@@ -202,38 +251,61 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
                   </option>
                 ))}
               </optgroup>
-              <optgroup label="Funcionários - Pagamentos">
-                {paymentEmployees.map((emp) => (
-                  <option key={`func-${emp.id}-pagamento`} value={`func-${emp.id}-pagamento`}>
-                    [Func] {emp.name} - Pagamento
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Funcionários - Adiantamentos">
-                {advanceEmployees.map((emp) => (
-                  <option key={`func-${emp.id}-adiantamento`} value={`func-${emp.id}-adiantamento`}>
-                    [Func] {emp.name} - Adiantamento
+              <optgroup label="Funcionários">
+                {uniqueEmployees.map((emp) => (
+                  <option key={`func-${emp.id}`} value={`func-${emp.id}`}>
+                    {emp.name}
                   </option>
                 ))}
               </optgroup>
             </select>
           </div>
 
+          {/* 2. Ao selecionar o funcionário, abrir uma segunda opção: Tipo de lançamento */}
+          {isEmployeeSelected && (
+            <div>
+              <label className="block text-[11px] font-semibold text-blue-700 dark:text-blue-400 mb-0.5">
+                Tipo de lançamento <span className="text-rose-500">*</span>
+              </label>
+              <select
+                value={employeePaymentType}
+                onChange={(e) => handleEmployeePaymentTypeChange(e.target.value as PaymentType)}
+                className="w-full px-2.5 py-1 bg-white dark:bg-slate-800 border-2 border-blue-500 dark:border-blue-500 rounded text-xs text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none h-7.5 font-medium"
+                required
+              >
+                <option value="Pagamento">Pagamento</option>
+                <option value="Adiantamento">Adiantamento</option>
+                <option value="Férias">Férias</option>
+                <option value="Rescisão">Rescisão</option>
+              </select>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             {/* Tipo Documento */}
             <div>
-              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-0.5">
-                Tipo Documento
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-0.5 flex items-center justify-between">
+                <span>Tipo Documento</span>
+                {isEmployeeSelected && (
+                  <span className="text-[10px] text-blue-600 dark:text-blue-400 font-normal">(Automático)</span>
+                )}
               </label>
               <select
                 value={docType}
+                disabled={isEmployeeSelected}
                 onChange={(e) => setDocType(e.target.value as DocumentType)}
-                className="w-full px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none h-7.5"
+                className={`w-full px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none h-7.5 ${
+                  isEmployeeSelected
+                    ? 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 cursor-not-allowed'
+                    : ''
+                }`}
               >
                 <option value="Boleto">Boleto</option>
                 <option value="Nota Fiscal">Nota Fiscal</option>
                 <option value="Adiantamento">Adiantamento</option>
                 <option value="Pagamento">Pagamento</option>
+                <option value="Férias">Férias</option>
+                <option value="Rescisão">Rescisão</option>
                 <option value="Outros">Outros</option>
               </select>
             </div>

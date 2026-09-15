@@ -124,9 +124,14 @@ export function calculateEntryDetails(entry: Entry, todayStr: string = getTodayD
   }
 
   // Interest calculation
-  // "Se Tipo Documento = 'Adiantamento' OU 'Pagamento': Juros = 0 (sem juros para pessoal)"
+  // "Se Tipo Documento = 'Adiantamento', 'Pagamento', 'Férias' OU 'Rescisão': Juros = 0 (sem juros para pessoal)"
   let interestValue = 0;
-  const isPersonnelDoc = entry.docType === 'Adiantamento' || entry.docType === 'Pagamento' || entry.favorecidoType === 'Funcionário';
+  const isPersonnelDoc =
+    entry.docType === 'Adiantamento' ||
+    entry.docType === 'Pagamento' ||
+    entry.docType === 'Férias' ||
+    entry.docType === 'Rescisão' ||
+    entry.favorecidoType === 'Funcionário';
 
   if (!isPersonnelDoc && status === 'Atrasado' && entry.interestRate > 0 && daysOverdue > 0) {
     interestValue = entry.value * (entry.interestRate / 100) * (daysOverdue / 30);
@@ -246,7 +251,7 @@ export function calculateSummaries(
     summaries.push({
       name: emp.name,
       type: 'Funcionário',
-      paymentType: emp.paymentType === 'Adiantamento' ? 'Adiantamento' : 'Pagamento',
+      paymentType: emp.paymentType,
       countPaid,
       valuePaid,
       countOverdue,

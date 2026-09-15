@@ -1,8 +1,8 @@
 export type EntityType = 'Fornecedor' | 'Funcionário';
 
-export type PaymentType = 'Adiantamento' | 'Pagamento';
+export type PaymentType = 'Pagamento' | 'Adiantamento' | 'Férias' | 'Rescisão';
 
-export type DocumentType = 'Boleto' | 'Nota Fiscal' | 'Adiantamento' | 'Pagamento' | 'Outros';
+export type DocumentType = 'Boleto' | 'Nota Fiscal' | 'Adiantamento' | 'Pagamento' | 'Férias' | 'Rescisão' | 'Outros';
 
 export type EntryStatus = 'Atrasado' | 'À Vencer' | 'Pago';
 

@@ -44,6 +44,8 @@ interface DashboardProps {
   employees: Employee[];
   incomes?: IncomeEntry[];
   onViewUpcomingDetails?: () => void;
+  onViewOverdueDetails?: () => void;
+  onViewToPayDetails?: () => void;
 }
 
 const STORAGE_KEY_MODE = 'contas_pagar_period_mode'; // 'MONTH' | 'ALL'
@@ -56,6 +58,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   employees,
   incomes = [],
   onViewUpcomingDetails,
+  onViewOverdueDetails,
+  onViewToPayDetails,
 }) => {
   // Current real date defaults
   const today = new Date();
@@ -804,38 +808,72 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* 2. CARDS DE RESUMO - DINÂMICOS POR MÊS (DESPESAS + ENTRADAS + SALDO) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
         {/* Card 1 - Total Atrasado */}
-        <div className="p-3 rounded-lg border bg-rose-50 border-rose-200 text-rose-950 dark:bg-rose-950/70 dark:border-rose-900/80 dark:text-rose-100 shadow-2xs flex items-center justify-between transition-all hover:border-rose-300">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300">
-              <span>Total Atrasado</span>
+        <div className="p-3 rounded-lg border bg-rose-50 border-rose-200 text-black dark:bg-rose-950/70 dark:border-rose-900/80 dark:text-rose-100 shadow-2xs flex flex-col justify-between transition-all hover:border-rose-300">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-black dark:text-rose-300">
+                <span>Total Atrasado</span>
+              </div>
+              <div className="text-lg font-extrabold tracking-tight font-mono tabular-nums text-black dark:text-rose-100">
+                {formatBRL(totalOverdue)}
+              </div>
+              <p className="text-[10px] font-bold text-black dark:text-rose-300">
+                {countOverdue} {countOverdue === 1 ? 'pendência' : 'pendências'}
+              </p>
             </div>
-            <div className="text-lg font-extrabold tracking-tight font-mono tabular-nums text-rose-900 dark:text-rose-100">
-              {formatBRL(totalOverdue)}
+            <div className="p-2 rounded-md bg-rose-200/80 dark:bg-rose-900/80 text-rose-800 dark:text-rose-200 text-sm font-bold">
+              ⚠️
             </div>
-            <p className="text-[10px] font-medium text-rose-700 dark:text-rose-300">
-              {countOverdue} {countOverdue === 1 ? 'pendência' : 'pendências'}
-            </p>
           </div>
-          <div className="p-2 rounded-md bg-rose-200/80 dark:bg-rose-900/80 text-rose-800 dark:text-rose-200 text-sm font-bold">
-            ⚠️
+          <div className="pt-2 mt-2 border-t border-rose-200/80 dark:border-rose-900/60 flex items-center justify-end">
+            <button
+              type="button"
+              id="btn-ver-detalhes-total-atrasado"
+              onClick={() => {
+                if (onViewOverdueDetails) {
+                  onViewOverdueDetails();
+                }
+              }}
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-black hover:text-rose-900 dark:text-rose-300 dark:hover:text-rose-200 transition-colors cursor-pointer py-0.5 px-1.5 rounded hover:bg-rose-100/80 dark:hover:bg-rose-900/50"
+            >
+              Exibir detalhes
+              <ArrowRight className="w-3 h-3" />
+            </button>
           </div>
         </div>
 
         {/* Card 2 - Total À Vencer */}
-        <div className="p-3 rounded-lg border bg-blue-50 border-blue-200 text-blue-950 dark:bg-blue-950/70 dark:border-blue-900/80 dark:text-blue-100 shadow-2xs flex items-center justify-between transition-all hover:border-blue-300">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">
-              <span>Total À Vencer</span>
+        <div className="p-3 rounded-lg border bg-blue-50 border-blue-200 text-black dark:bg-blue-950/70 dark:border-blue-900/80 dark:text-blue-100 shadow-2xs flex flex-col justify-between transition-all hover:border-blue-300">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-black dark:text-blue-300">
+                <span>Total À Vencer</span>
+              </div>
+              <div className="text-lg font-extrabold tracking-tight font-mono tabular-nums text-black dark:text-blue-100">
+                {formatBRL(totalToPay)}
+              </div>
+              <p className="text-[10px] font-bold text-black dark:text-blue-300">
+                {countToPay} {countToPay === 1 ? 'a pagar' : 'a pagar'}
+              </p>
             </div>
-            <div className="text-lg font-extrabold tracking-tight font-mono tabular-nums text-blue-900 dark:text-blue-100">
-              {formatBRL(totalToPay)}
+            <div className="p-2 rounded-md bg-blue-200/80 dark:bg-blue-900/80 text-blue-800 dark:text-blue-200 text-sm font-bold">
+              📅
             </div>
-            <p className="text-[10px] font-medium text-blue-700 dark:text-blue-300">
-              {countToPay} {countToPay === 1 ? 'a pagar' : 'a pagar'}
-            </p>
           </div>
-          <div className="p-2 rounded-md bg-blue-200/80 dark:bg-blue-900/80 text-blue-800 dark:text-blue-200 text-sm font-bold">
-            📅
+          <div className="pt-2 mt-2 border-t border-blue-200/80 dark:border-blue-900/60 flex items-center justify-end">
+            <button
+              type="button"
+              id="btn-ver-detalhes-total-a-vencer"
+              onClick={() => {
+                if (onViewToPayDetails) {
+                  onViewToPayDetails();
+                }
+              }}
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-black hover:text-blue-900 dark:text-blue-300 dark:hover:text-blue-200 transition-colors cursor-pointer py-0.5 px-1.5 rounded hover:bg-blue-100/80 dark:hover:bg-blue-900/50"
+            >
+              Exibir detalhes
+              <ArrowRight className="w-3 h-3" />
+            </button>
           </div>
         </div>
 

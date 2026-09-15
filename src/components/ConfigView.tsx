@@ -335,6 +335,8 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
                 >
                   <option value="Pagamento">Pagamento (Salário Mensal)</option>
                   <option value="Adiantamento">Adiantamento (Vale)</option>
+                  <option value="Férias">Férias</option>
+                  <option value="Rescisão">Rescisão</option>
                 </select>
               </div>
 
@@ -397,16 +399,22 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
                             >
                               <option value="Pagamento">Pagamento</option>
                               <option value="Adiantamento">Adiantamento</option>
+                              <option value="Férias">Férias</option>
+                              <option value="Rescisão">Rescisão</option>
                             </select>
                           ) : (
                             <span
                               className={`inline-flex px-1.5 py-0.25 rounded text-[10px] font-semibold ${
                                 emp.paymentType === 'Adiantamento'
                                   ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300'
+                                  : emp.paymentType === 'Férias'
+                                  ? 'bg-purple-100 text-purple-900 dark:bg-purple-950 dark:text-purple-300'
+                                  : emp.paymentType === 'Rescisão'
+                                  ? 'bg-rose-100 text-rose-900 dark:bg-rose-950 dark:text-rose-300'
                                   : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-300'
                               }`}
                             >
-                              {emp.paymentType === 'Adiantamento' ? 'Adiantamento' : 'Pagamento'}
+                              {emp.paymentType}
                             </span>
                           )}
                         </td>
