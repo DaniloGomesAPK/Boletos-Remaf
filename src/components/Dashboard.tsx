@@ -1774,7 +1774,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {supplierDebtData.monthsData.length === 0 ? (
-            <div className="h-48 flex flex-col items-center justify-center text-xs text-slate-500 space-y-1 bg-slate-50/50 dark:bg-slate-850/50 rounded-md border border-dashed border-slate-200 dark:border-slate-800">
+            <div className="h-48 flex flex-col items-center justify-center text-xs text-slate-500 space-y-1 bg-slate-50/50 dark:bg-slate-900/50 rounded-md border border-dashed border-slate-200 dark:border-slate-800">
               <span className="font-semibold text-slate-700 dark:text-slate-300">
                 Nenhuma dívida pendente encontrada para {supplierDebtData.supplierName || 'o fornecedor selecionado'}.
               </span>

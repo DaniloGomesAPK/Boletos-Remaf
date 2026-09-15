@@ -67,7 +67,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           {typeof message === 'string' ? <p className="leading-relaxed">{message}</p> : message}
         </div>
 
-        <div className="flex justify-end items-center gap-2 px-4 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850">
+        <div className="flex justify-end items-center gap-2 px-4 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900">
           <button
             id="btn-confirm-modal-cancel"
             type="button"

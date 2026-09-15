@@ -256,17 +256,17 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
           </div>
 
           {/* KPI 2: Quantidade de Contas */}
-          <div className="p-4 rounded-xl bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-700/80">
+          <div className="p-4 rounded-xl bg-white border border-slate-200 dark:border-slate-700/80">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-black dark:text-slate-200 uppercase tracking-wider">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                 Quantidade de contas
               </span>
-              <Receipt className="w-4 h-4 text-black dark:text-slate-400" />
+              <Receipt className="w-4 h-4 text-slate-700" />
             </div>
-            <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-black dark:text-white mt-1 tabular-nums">
+            <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-slate-900 mt-1 tabular-nums">
               {totalCount}
             </div>
-            <p className="text-[11px] text-black dark:text-slate-300 mt-1 font-medium">
+            <p className="text-[11px] text-slate-700 mt-1 font-medium">
               {isOverdue
                 ? `${totalCount === 1 ? '1 conta em atraso' : `${totalCount} contas em atraso`}`
                 : `${totalCount === 1 ? '1 conta programada' : `${totalCount} contas programadas`}`}
@@ -274,9 +274,9 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
           </div>
 
           {/* KPI 3: Indicador Auxiliar */}
-          <div className="p-4 rounded-xl bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-700/80 sm:col-span-2 lg:col-span-1">
+          <div className="p-4 rounded-xl bg-white border border-slate-200 dark:border-slate-700/80 sm:col-span-2 lg:col-span-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-black dark:text-slate-200 uppercase tracking-wider">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                 {isOverdue ? 'Juros Acumulados' : 'Próximos 7 Dias'}
               </span>
               {isOverdue ? (
@@ -285,10 +285,10 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
                 <Clock className="w-4 h-4 text-amber-500" />
               )}
             </div>
-            <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-black dark:text-white mt-1 tabular-nums">
+            <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-slate-900 mt-1 tabular-nums">
               {isOverdue ? formatBRL(totalInterest) : formatBRL(totalNext7Days)}
             </div>
-            <p className="text-[11px] text-black dark:text-slate-300 mt-1 font-medium">
+            <p className="text-[11px] text-slate-700 mt-1 font-medium">
               {isOverdue
                 ? 'Valor acumulado por dias de atraso'
                 : `${next7DaysEntries.length} ${next7DaysEntries.length === 1 ? 'conta na próxima semana' : 'contas na próxima semana'}`}
@@ -306,7 +306,7 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
             placeholder="Buscar por fornecedor, documento ou data..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-700 rounded-lg text-black dark:text-white placeholder:text-slate-500 font-medium focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-black dark:text-white placeholder:text-slate-500 font-medium focus:outline-hidden focus:ring-2 focus:ring-blue-500"
           />
         </div>
 
