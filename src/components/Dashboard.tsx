@@ -6,8 +6,6 @@ import {
   Calendar,
   CheckCircle2,
   CircleDollarSign,
-  Search,
-  ArrowUpDown,
   UserCheck,
   Truck,
   RotateCcw,
@@ -19,6 +17,10 @@ import {
   Wallet,
   ArrowDownRight,
   ArrowUpRight,
+  ShieldCheck,
+  Activity,
+  ShieldAlert,
+  Percent,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -27,9 +29,9 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
   Legend,
   Cell,
+  LabelList,
 } from 'recharts';
 
 interface DashboardProps {
@@ -89,12 +91,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
     }
     return currentYearNum;
   });
-
-  // Table Controls State
-  const [filterType, setFilterType] = useState<'Todos' | 'Fornecedor' | 'Funcionário'>('Todos');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortField, setSortField] = useState<keyof EntitySummary>('balanceDue');
-  const [sortAsc, setSortAsc] = useState(false);
 
   // Sorted suppliers for debt analysis
   const sortedSuppliers = useMemo(() => {
@@ -290,50 +286,68 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
     return totalIncomesPeriod - totalPaid;
   }, [totalIncomesPeriod, totalPaid]);
 
-  // 4. Entity Summary Table Calculations based on filtered entries
+  // 4. Bloco Executivo de Saúde Financeira
+  const futureCommitments = useMemo(() => {
+    return totalToPay + totalOverdue;
+  }, [totalToPay, totalOverdue]);
+
+  const coverageRatio = useMemo(() => {
+    if (futureCommitments <= 0) {
+      return totalIncomesPeriod > 0 ? 10 : 1;
+    }
+    return totalIncomesPeriod / futureCommitments;
+  }, [totalIncomesPeriod, futureCommitments]);
+
+  const financialHealth = useMemo(() => {
+    // Caso 1: Sem compromissos pendentes no período
+    if (futureCommitments === 0) {
+      return {
+        status: 'Saudável' as const,
+        color: 'emerald',
+        badgeBg: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-200 dark:border-emerald-800',
+        cardBg: 'bg-gradient-to-br from-emerald-50/40 via-white to-teal-50/20 dark:from-emerald-950/20 dark:via-slate-900 dark:to-teal-950/10 border-emerald-300/80 dark:border-emerald-800/80',
+        verdict: 'Sem compromissos futuros ou pendências em aberto no período. Capacidade financeira plena e caixa preservado.',
+      };
+    }
+
+    // Caso 2: Saudável (Entradas cobrem com folga >= 1.2x, saldo operacional positivo e sem atrasos relevantes)
+    if (coverageRatio >= 1.2 && netBalancePeriod >= 0 && totalOverdue === 0) {
+      return {
+        status: 'Saudável' as const,
+        color: 'emerald',
+        badgeBg: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-200 dark:border-emerald-800',
+        cardBg: 'bg-gradient-to-br from-emerald-50/40 via-white to-teal-50/20 dark:from-emerald-950/20 dark:via-slate-900 dark:to-teal-950/10 border-emerald-300/80 dark:border-emerald-800/80',
+        verdict: 'Fluxo financeiro saudável. As entradas do período superam com folga as contas futuras e não há inadimplência.',
+      };
+    }
+
+    // Caso 3: Atenção (Cobertura entre 0.8x e 1.2x, ou cobertura alta mas com contas em atraso)
+    if (coverageRatio >= 0.8) {
+      return {
+        status: 'Atenção' as const,
+        color: 'amber',
+        badgeBg: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/80 dark:text-amber-200 dark:border-amber-800',
+        cardBg: 'bg-gradient-to-br from-amber-50/40 via-white to-yellow-50/20 dark:from-amber-950/20 dark:via-slate-900 dark:to-yellow-950/10 border-amber-300/80 dark:border-amber-800/80',
+        verdict: totalOverdue > 0
+          ? `Atenção: Existem ${formatBRL(totalOverdue)} em contas em atraso. Recomenda-se regularizar essas pendências para evitar juros.`
+          : 'Atenção: A cobertura de receitas sobre os compromissos futuros está no limite da margem operacional. Acompanhe o fluxo de recebimentos.',
+      };
+    }
+
+    // Caso 4: Risco (Cobertura < 0.8x ou déficits expressivos)
+    return {
+      status: 'Risco' as const,
+      color: 'rose',
+      badgeBg: 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/80 dark:text-rose-200 dark:border-rose-800',
+      cardBg: 'bg-gradient-to-br from-rose-50/40 via-white to-red-50/20 dark:from-rose-950/20 dark:via-slate-900 dark:to-red-950/10 border-rose-300/80 dark:border-rose-800/80',
+      verdict: 'Alerta de risco de liquidez: As entradas previstas no período são insuficientes para honrar a totalidade dos compromissos futuros.',
+    };
+  }, [futureCommitments, coverageRatio, netBalancePeriod, totalOverdue]);
+
+  // Resumo de entidades (utilizado no gráfico Top 5 Favorecidos)
   const entitySummaries = useMemo(() => {
     return calculateSummaries(filteredEntriesForPeriod, suppliers, employees);
   }, [filteredEntriesForPeriod, suppliers, employees]);
-
-  // Filter & Sort Entity Summaries Table
-  const filteredSummaries = useMemo(() => {
-    // Filter out suppliers and employees that have 0 across all values (Pago, Atrasado, À Vencer)
-    let list = entitySummaries.filter(
-      (item) => item.valuePaid > 0 || item.valueOverdue > 0 || item.valueToPay > 0
-    );
-
-    if (filterType !== 'Todos') {
-      list = list.filter((item) => item.type === filterType);
-    }
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      list = list.filter((item) => item.name.toLowerCase().includes(q));
-    }
-
-    list.sort((a, b) => {
-      let valA = a[sortField];
-      let valB = b[sortField];
-
-      if (typeof valA === 'string' && typeof valB === 'string') {
-        return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(a[sortField] as string);
-      }
-      const numA = Number(valA) || 0;
-      const numB = Number(valB) || 0;
-      return sortAsc ? numA - numB : numB - numA;
-    });
-
-    return list;
-  }, [entitySummaries, filterType, searchQuery, sortField, sortAsc]);
-
-  const handleSort = (field: keyof EntitySummary) => {
-    if (sortField === field) {
-      setSortAsc(!sortAsc);
-    } else {
-      setSortField(field);
-      setSortAsc(false); // default descending
-    }
-  };
 
   // 5. Chart Data Calculations
 
@@ -527,6 +541,122 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
 
   // Year choices for dropdown
   const yearOptions = [2023, 2024, 2025, 2026, 2027, 2028, 2029];
+
+  // Helper para formatar valores grandes com abreviação executiva: R$ 90.668,46 -> R$ 90,6 mil
+  const formatCompactBRL = (val: number): string => {
+    if (!val || isNaN(val) || val <= 0) return 'R$ 0';
+    const absVal = Math.abs(val);
+
+    if (absVal >= 1_000_000) {
+      const truncated = Math.floor((absVal / 1_000_000) * 10) / 10;
+      const formatted = truncated.toLocaleString('pt-BR', {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      });
+      return `R$ ${formatted} mi`;
+    }
+    if (absVal >= 1_000) {
+      const truncated = Math.floor((absVal / 1_000) * 10) / 10;
+      const formatted = truncated.toLocaleString('pt-BR', {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      });
+      return `R$ ${formatted} mil`;
+    }
+    return `R$ ${absVal.toLocaleString('pt-BR', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+
+  // Helper para renderizar labels fixos inclinados (-40°) conectados a cada barra no gráfico "Fluxo Financeiro Mensal"
+  // Requisitos:
+  // - Labels inclinados acompanhando cada barra (rotação aproximada de -35°/-45°)
+  // - Conexão visual com a barra correspondente (haste de ancoragem vertical e ponto de fixação)
+  // - Formato: R$ XX,X mil • CATEGORIA (valor em destaque, categoria em escala menor)
+  // - Para barras pequenas, mantém o posicionamento externo tradicional acima da barra
+  // - Elimina qualquer colisão entre séries do mesmo mês através do paralelismo angular
+  const renderMonthlyBarLabel = (
+    category: string,
+    _barIndex: number,
+    lightColor: string,
+    valColorClass: string
+  ) => {
+    return (props: {
+      x?: number | string;
+      y?: number | string;
+      width?: number | string;
+      value?: unknown;
+    }) => {
+      const { x = 0, y = 0, width = 0, value } = props;
+      const num = Number(value);
+      if (!num || isNaN(num) || num <= 0) return null;
+
+      const centerX = Number(x) + Number(width) / 2;
+      const topY = Number(y);
+
+      return (
+        <g className="pointer-events-none select-none">
+          {/* Haste de conexão visual conectando o topo da barra ao label */}
+          <line
+            x1={centerX}
+            y1={topY}
+            x2={centerX}
+            y2={topY - 6}
+            stroke={lightColor}
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            opacity={0.65}
+          />
+          <circle
+            cx={centerX}
+            cy={topY}
+            r={1.5}
+            fill={lightColor}
+            opacity={0.8}
+          />
+
+          {/* Label rotacionado a -40° acompanhando a barra correspondente */}
+          <g transform={`translate(${centerX}, ${topY - 8}) rotate(-40)`}>
+            <text
+              x={0}
+              y={0}
+              textAnchor="start"
+              dominantBaseline="central"
+            >
+              {/* Valor em destaque */}
+              <tspan
+                fill={lightColor}
+                className={`font-black font-mono tracking-tight ${valColorClass}`}
+                fontSize={9}
+                fontWeight="800"
+              >
+                {formatCompactBRL(num)}
+              </tspan>
+              {/* Separador elegante */}
+              <tspan
+                fill="#94a3b8"
+                className="fill-slate-400 dark:fill-slate-500 font-medium"
+                fontSize={7.5}
+              >
+                {' • '}
+              </tspan>
+              {/* Categoria em tamanho menor */}
+              <tspan
+                fill="#475569"
+                className="fill-slate-600 dark:fill-slate-300 font-bold uppercase tracking-wider"
+                fontSize={7.5}
+                fontWeight="700"
+                fontFamily="sans-serif"
+              >
+                {category.toUpperCase()}
+              </tspan>
+            </text>
+          </g>
+        </g>
+      );
+    };
+  };
 
   return (
     <div className="space-y-4">
@@ -849,387 +979,307 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
         </div>
       </div>
 
-      {/* 3. TABELA DE RESUMO POR FORNECEDOR / FUNCIONÁRIO - FILTRADA */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-2xs overflow-hidden">
-        {/* Table Header Controls */}
-        <div className="p-2.5 sm:p-3 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50/70 dark:bg-slate-800/40">
-          <div>
-            <h2 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 uppercase tracking-wider">
-              <CircleDollarSign className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              Resumo por Favorecido ({periodLabel})
-            </h2>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Valores calculados estritamente para os lançamentos do período <span className="font-semibold">{periodLabel}</span>
-            </p>
+      {/* 3. CARD EXECUTIVO: SAÚDE FINANCEIRA */}
+      <div className={`rounded-xl border p-4 sm:p-5 shadow-xs transition-all ${financialHealth.cardBg}`}>
+        {/* Header do Card */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 dark:border-slate-800/80 pb-3">
+          <div className="flex items-start gap-3">
+            <div
+              className={`p-2 rounded-lg text-white shadow-xs shrink-0 ${
+                financialHealth.status === 'Saudável'
+                  ? 'bg-emerald-600 dark:bg-emerald-500'
+                  : financialHealth.status === 'Atenção'
+                  ? 'bg-amber-600 dark:bg-amber-500'
+                  : 'bg-rose-600 dark:bg-rose-500'
+              }`}
+            >
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                  SAÚDE FINANCEIRA
+                </h2>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono">
+                  {periodLabel}
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                Visão executiva de solvência, liquidez operacional e índice de cobertura de compromissos futuros.
+              </p>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Filter by Entity Type */}
-            <div className="flex items-center bg-slate-200/80 dark:bg-slate-800 p-0.5 rounded border border-slate-300/80 dark:border-slate-700 text-[11px] font-medium">
-              <button
-                onClick={() => setFilterType('Todos')}
-                className={`px-2 py-0.5 rounded transition-all ${
-                  filterType === 'Todos'
-                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-bold'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+          {/* Badge de Status Geral: Verde (Saudável), Amarelo (Atenção), Vermelho (Risco) */}
+          <div className="flex items-center self-start sm:self-auto">
+            <div
+              className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-xs font-black uppercase tracking-wide shadow-2xs ${financialHealth.badgeBg}`}
+            >
+              <span
+                className={`w-2.5 h-2.5 rounded-full animate-pulse ${
+                  financialHealth.status === 'Saudável'
+                    ? 'bg-emerald-500'
+                    : financialHealth.status === 'Atenção'
+                    ? 'bg-amber-500'
+                    : 'bg-rose-500'
                 }`}
-              >
-                Todos
-              </button>
-              <button
-                onClick={() => setFilterType('Fornecedor')}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded transition-all ${
-                  filterType === 'Fornecedor'
-                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-bold'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                }`}
-              >
-                <Truck className="w-3 h-3 text-slate-500" /> Fornecedores
-              </button>
-              <button
-                onClick={() => setFilterType('Funcionário')}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded transition-all ${
-                  filterType === 'Funcionário'
-                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-bold'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                }`}
-              >
-                <UserCheck className="w-3 h-3 text-blue-500" /> Funcionários
-              </button>
-            </div>
-
-            {/* Search input */}
-            <div className="relative w-full sm:w-44">
-              <Search className="w-3.5 h-3.5 absolute left-2 top-2 text-slate-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar favorecido..."
-                className="w-full pl-7 pr-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none h-7"
               />
+              <span>Status: {financialHealth.status}</span>
             </div>
           </div>
         </div>
 
-        {/* Mobile Favorecidos Summary Cards */}
-        <div className="sm:hidden divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
-          {filteredSummaries.length === 0 ? (
-            <div className="py-6 text-center text-slate-500 dark:text-slate-400 text-xs px-4">
-              Nenhum favorecido com lançamentos em <span className="font-semibold">{periodLabel}</span>.
+        {/* 3 Pilares Executivos: Saldo Operacional | Compromissos Futuros | Cobertura Financeira */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-4">
+          {/* Pilar 1: Saldo Operacional */}
+          <div className="bg-white dark:bg-slate-900/90 rounded-lg p-3.5 border border-slate-200/90 dark:border-slate-800 shadow-2xs flex flex-col justify-between space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                <Wallet className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                Saldo Operacional
+              </span>
+              <span
+                className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+                  netBalancePeriod >= 0
+                    ? 'bg-teal-100 text-teal-800 dark:bg-teal-950/80 dark:text-teal-300'
+                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300'
+                }`}
+              >
+                {netBalancePeriod >= 0 ? 'Superávit' : 'Déficit'}
+              </span>
             </div>
-          ) : (
-            filteredSummaries.map((item, idx) => {
-              const isSupplier = item.type === 'Fornecedor';
-              const hasBalance = item.balanceDue > 0;
 
-              return (
-                <div key={`dash-fav-m-${item.type}-${item.name}-${idx}`} className="p-3 space-y-2 hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <span className="font-bold text-xs text-slate-900 dark:text-white block">{item.name}</span>
-                      <span
-                        className={`inline-block mt-0.5 px-1.5 py-0.25 rounded text-[10px] font-semibold ${
-                          isSupplier
-                            ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300 dark:border-slate-700'
-                            : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
-                        }`}
-                      >
-                        {isSupplier ? 'Fornecedor' : (item.paymentType || 'Funcionário')}
-                      </span>
-                    </div>
+            <div>
+              <div
+                className={`text-xl sm:text-2xl font-black font-mono tracking-tight tabular-nums ${
+                  netBalancePeriod >= 0
+                    ? 'text-teal-700 dark:text-teal-300'
+                    : 'text-amber-700 dark:text-amber-400'
+                }`}
+              >
+                {formatBRL(netBalancePeriod)}
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                Resultado líquido apurado: Receitas recebidas menos Despesas pagas no período.
+              </p>
+            </div>
 
-                    <div className="text-right">
-                      <span className="text-[10px] text-slate-500 block">Saldo Devedor</span>
-                      <span
-                        className={`font-mono font-extrabold text-xs ${
-                          hasBalance
-                            ? 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-900'
-                            : 'text-slate-600 dark:text-slate-400'
-                        }`}
-                      >
-                        {formatBRL(item.balanceDue)}
-                      </span>
-                    </div>
-                  </div>
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] font-mono">
+              <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
+                Entradas: {formatBRL(totalIncomesPeriod)}
+              </span>
+              <span className="text-slate-500 dark:text-slate-400">
+                Pagas: {formatBRL(totalPaid)}
+              </span>
+            </div>
+          </div>
 
-                  <div className="grid grid-cols-3 gap-1.5 text-[10px] pt-1 border-t border-slate-100 dark:border-slate-800">
-                    <div className="bg-emerald-50 dark:bg-emerald-950/40 p-1.5 rounded text-center border border-emerald-200/60 dark:border-emerald-900/60">
-                      <span className="text-emerald-800 dark:text-emerald-300 block font-semibold">Pago ({item.countPaid})</span>
-                      <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">{formatBRL(item.valuePaid)}</span>
-                    </div>
+          {/* Pilar 2: Compromissos Futuros */}
+          <div className="bg-white dark:bg-slate-900/90 rounded-lg p-3.5 border border-slate-200/90 dark:border-slate-800 shadow-2xs flex flex-col justify-between space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                Compromissos Futuros
+              </span>
+              <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 font-mono">
+                {countToPay + countOverdue} {countToPay + countOverdue === 1 ? 'conta' : 'contas'}
+              </span>
+            </div>
 
-                    <div className="bg-rose-50 dark:bg-rose-950/40 p-1.5 rounded text-center border border-rose-200/60 dark:border-rose-900/60">
-                      <span className="text-rose-800 dark:text-rose-300 block font-semibold">Atraso ({item.countOverdue})</span>
-                      <span className="font-mono font-bold text-rose-700 dark:text-rose-400">{formatBRL(item.valueOverdue)}</span>
-                    </div>
+            <div>
+              <div className="text-xl sm:text-2xl font-black font-mono tracking-tight tabular-nums text-slate-900 dark:text-white">
+                {formatBRL(futureCommitments)}
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                Volume de contas a vencer e pendências que exigirão liquidação financeira.
+              </p>
+            </div>
 
-                    <div className="bg-blue-50 dark:bg-blue-950/40 p-1.5 rounded text-center border border-blue-200/60 dark:border-blue-900/60">
-                      <span className="text-blue-800 dark:text-blue-300 block font-semibold">À Vencer ({item.countToPay})</span>
-                      <span className="font-mono font-bold text-blue-700 dark:text-blue-400">{formatBRL(item.valueToPay)}</span>
-                    </div>
-                  </div>
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] font-mono">
+              <span className="text-blue-700 dark:text-blue-400 font-semibold">
+                À Vencer: {formatBRL(totalToPay)}
+              </span>
+              <span className={totalOverdue > 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-400'}>
+                {totalOverdue > 0 ? `Atrasado: ${formatBRL(totalOverdue)}` : 'Sem atrasos'}
+              </span>
+            </div>
+          </div>
 
-                  {item.accumulatedInterest > 0 && (
-                    <div className="flex items-center justify-between text-[10px] text-rose-600 dark:text-rose-400 font-mono">
-                      <span>Juros acumulados:</span>
-                      <span className="font-bold">{formatBRL(item.accumulatedInterest)}</span>
-                    </div>
-                  )}
+          {/* Pilar 3: Cobertura Financeira (Entradas / Contas Futuras) */}
+          <div className="bg-white dark:bg-slate-900/90 rounded-lg p-3.5 border border-slate-200/90 dark:border-slate-800 shadow-2xs flex flex-col justify-between space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                Cobertura Financeira
+              </span>
+              <span
+                className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded font-mono ${
+                  coverageRatio >= 1.2
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300'
+                    : coverageRatio >= 0.8
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300'
+                    : 'bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300'
+                }`}
+              >
+                {futureCommitments > 0 ? `${coverageRatio.toFixed(2)}x` : '100%+'}
+              </span>
+            </div>
+
+            <div>
+              <div className="flex items-baseline gap-2">
+                <span
+                  className={`text-xl sm:text-2xl font-black font-mono tracking-tight tabular-nums ${
+                    coverageRatio >= 1.2
+                      ? 'text-emerald-700 dark:text-emerald-400'
+                      : coverageRatio >= 0.8
+                      ? 'text-amber-700 dark:text-amber-400'
+                      : 'text-rose-700 dark:text-rose-400'
+                  }`}
+                >
+                  {futureCommitments > 0 ? `${Math.round(coverageRatio * 100)}%` : '100% coberto'}
+                </span>
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">
+                  (Entradas / Contas Futuras)
+                </span>
+              </div>
+
+              {/* Barra de Progresso / Medidor Visual de Cobertura */}
+              <div className="space-y-1 mt-2">
+                <div className="flex justify-between text-[9px] font-bold text-slate-500 dark:text-slate-400 font-mono">
+                  <span>0%</span>
+                  <span className="text-slate-700 dark:text-slate-300 font-extrabold">100% (Ponto de Equilíbrio)</span>
+                  <span>200%+</span>
                 </div>
-              );
-            })
-          )}
-
-          {filteredSummaries.length > 0 && (
-            <div className="p-3 bg-slate-100 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between font-bold text-xs">
-              <span className="text-slate-800 dark:text-slate-200 uppercase tracking-wider text-[10px]">
-                Saldo Total Devedor:
-              </span>
-              <span className="font-mono font-extrabold text-amber-700 dark:text-amber-400 text-sm">
-                {formatBRL(filteredSummaries.reduce((sum, i) => sum + i.balanceDue, 0))}
-              </span>
+                <div className="relative h-2 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      coverageRatio >= 1.2 ? 'bg-emerald-500' : coverageRatio >= 0.8 ? 'bg-amber-500' : 'bg-rose-500'
+                    }`}
+                    style={{ width: `${Math.min(100, (coverageRatio / 2) * 100)}%` }}
+                  />
+                  <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-slate-400/80 dark:bg-slate-500" title="100% Cobertura" />
+                </div>
+              </div>
             </div>
-          )}
+
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-400 font-medium">
+              {futureCommitments > 0 ? (
+                <span>
+                  R$ <strong className="font-mono text-slate-800 dark:text-slate-200">{coverageRatio.toFixed(2)}</strong> de entrada para cada R$ 1,00 de compromisso futuro.
+                </span>
+              ) : (
+                <span className="text-emerald-700 dark:text-emerald-400 font-medium">
+                  Sem passivos pendentes registrados no período.
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* Summary Table (Desktop & Tablet) */}
-        <div className="hidden sm:block overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-slate-100/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-700 select-none text-[11px]">
-                <th
-                  onClick={() => handleSort('name')}
-                  className="py-2 px-2.5 cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-700/60"
-                >
-                  <div className="flex items-center gap-1">
-                    <span>Nome</span>
-                    <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort('type')}
-                  className="py-2 px-2.5 cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-700/60"
-                >
-                  <div className="flex items-center gap-1">
-                    <span>Tipo</span>
-                    <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                  </div>
-                </th>
-                <th className="py-2 px-2 text-center">Qt Pago</th>
-                <th
-                  onClick={() => handleSort('valuePaid')}
-                  className="py-2 px-2.5 text-right cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-700/60"
-                >
-                  <div className="flex items-center justify-end gap-1">
-                    <span>Valor Pago</span>
-                    <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                  </div>
-                </th>
-                <th className="py-2 px-2 text-center">Qt Atraso</th>
-                <th
-                  onClick={() => handleSort('valueOverdue')}
-                  className="py-2 px-2.5 text-right cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-700/60"
-                >
-                  <div className="flex items-center justify-end gap-1">
-                    <span>Valor Atrasado</span>
-                    <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                  </div>
-                </th>
-                <th className="py-2 px-2 text-center">Qt Vencer</th>
-                <th
-                  onClick={() => handleSort('valueToPay')}
-                  className="py-2 px-2.5 text-right cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-700/60"
-                >
-                  <div className="flex items-center justify-end gap-1">
-                    <span>Valor À Vencer</span>
-                    <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort('balanceDue')}
-                  className="py-2 px-2.5 text-right cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-700/60 font-extrabold"
-                >
-                  <div className="flex items-center justify-end gap-1">
-                    <span>Saldo Devedor</span>
-                    <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort('accumulatedInterest')}
-                  className="py-2 px-2.5 text-right cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-700/60"
-                >
-                  <div className="flex items-center justify-end gap-1">
-                    <span>Juros Acum.</span>
-                    <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                  </div>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200/80 dark:divide-slate-800 font-mono text-[11px] tabular-nums">
-              {filteredSummaries.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="py-6 text-center text-slate-500 dark:text-slate-400 font-sans">
-                    Nenhum favorecido com lançamentos em <span className="font-semibold">{periodLabel}</span>.
-                  </td>
-                </tr>
-              ) : (
-                filteredSummaries.map((item, idx) => {
-                  const isSupplier = item.type === 'Fornecedor';
-                  const rowBg = isSupplier
-                    ? 'bg-slate-50/50 dark:bg-slate-900/50 hover:bg-slate-100/80 dark:hover:bg-slate-800/70'
-                    : 'bg-blue-50/40 dark:bg-blue-950/20 hover:bg-blue-100/40 dark:hover:bg-blue-900/30';
-
-                  const hasBalance = item.balanceDue > 0;
-
-                  return (
-                    <tr key={`${item.type}-${item.name}-${idx}`} className={`transition-colors ${rowBg}`}>
-                      {/* Nome */}
-                      <td className="py-1.5 px-2.5 font-sans font-medium text-slate-900 dark:text-white whitespace-nowrap">
-                        {item.name}
-                      </td>
-
-                      {/* Tipo */}
-                      <td className="py-1.5 px-2.5 font-sans">
-                        <span
-                          className={`inline-flex items-center gap-0.5 px-1.5 py-0.25 rounded text-[10px] font-semibold ${
-                            isSupplier
-                              ? 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200'
-                              : 'bg-blue-200 text-blue-900 dark:bg-blue-900 dark:text-blue-200'
-                          }`}
-                        >
-                          {isSupplier ? 'Fornecedor' : (item.paymentType || 'Pagamento')}
-                        </span>
-                      </td>
-
-                      {/* Qt Pago */}
-                      <td className="py-1.5 px-2 text-center text-slate-600 dark:text-slate-300">
-                        {item.countPaid}
-                      </td>
-
-                      {/* Valor Pago */}
-                      <td className="py-1.5 px-2.5 text-right font-medium text-emerald-700 dark:text-emerald-400">
-                        {formatBRL(item.valuePaid)}
-                      </td>
-
-                      {/* Qt Atrasado */}
-                      <td className="py-1.5 px-2 text-center font-bold text-rose-600 dark:text-rose-400">
-                        {item.countOverdue > 0 ? item.countOverdue : 0}
-                      </td>
-
-                      {/* Valor Atrasado */}
-                      <td className="py-1.5 px-2.5 text-right font-medium text-rose-700 dark:text-rose-400">
-                        {item.valueOverdue > 0 ? formatBRL(item.valueOverdue) : 'R$ 0,00'}
-                      </td>
-
-                      {/* Qt À Vencer */}
-                      <td className="py-1.5 px-2 text-center text-slate-600 dark:text-slate-300">
-                        {item.countToPay}
-                      </td>
-
-                      {/* Valor À Vencer */}
-                      <td className="py-1.5 px-2.5 text-right font-medium text-blue-700 dark:text-blue-400">
-                        {item.valueToPay > 0 ? formatBRL(item.valueToPay) : 'R$ 0,00'}
-                      </td>
-
-                      {/* Saldo Devedor */}
-                      <td
-                        className={`py-1.5 px-2.5 text-right font-bold ${
-                          hasBalance
-                            ? 'bg-amber-100/80 text-amber-950 dark:bg-amber-950/80 dark:text-amber-200'
-                            : 'text-slate-700 dark:text-slate-300'
-                        }`}
-                      >
-                        {formatBRL(item.balanceDue)}
-                      </td>
-
-                      {/* Juros Acumulados */}
-                      <td className="py-1.5 px-2.5 text-right text-slate-700 dark:text-slate-300">
-                        {item.accumulatedInterest > 0 ? formatBRL(item.accumulatedInterest) : 'R$ 0,00'}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-            {/* Totals Footer */}
-            {filteredSummaries.length > 0 && (
-              <tfoot>
-                <tr className="bg-slate-200/90 dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-bold text-[11px] tabular-nums border-t-2 border-slate-300 dark:border-slate-700">
-                  <td colSpan={2} className="py-2 px-2.5 font-sans uppercase text-[11px] font-extrabold">
-                    Totais do Resumo ({periodLabel})
-                  </td>
-                  <td className="py-2 px-2 text-center">
-                    {filteredSummaries.reduce((sum, i) => sum + i.countPaid, 0)}
-                  </td>
-                  <td className="py-2 px-2.5 text-right text-emerald-700 dark:text-emerald-400">
-                    {formatBRL(filteredSummaries.reduce((sum, i) => sum + i.valuePaid, 0))}
-                  </td>
-                  <td className="py-2 px-2 text-center text-rose-600 dark:text-rose-400">
-                    {filteredSummaries.reduce((sum, i) => sum + i.countOverdue, 0)}
-                  </td>
-                  <td className="py-2 px-2.5 text-right text-rose-700 dark:text-rose-400">
-                    {formatBRL(filteredSummaries.reduce((sum, i) => sum + i.valueOverdue, 0))}
-                  </td>
-                  <td className="py-2 px-2 text-center">
-                    {filteredSummaries.reduce((sum, i) => sum + i.countToPay, 0)}
-                  </td>
-                  <td className="py-2 px-2.5 text-right text-blue-700 dark:text-blue-400">
-                    {formatBRL(filteredSummaries.reduce((sum, i) => sum + i.valueToPay, 0))}
-                  </td>
-                  <td className="py-2 px-2.5 text-right bg-amber-200/90 dark:bg-amber-900 text-amber-950 dark:text-amber-100 font-extrabold text-xs">
-                    {formatBRL(filteredSummaries.reduce((sum, i) => sum + i.balanceDue, 0))}
-                  </td>
-                  <td className="py-2 px-2.5 text-right text-slate-800 dark:text-slate-200">
-                    {formatBRL(filteredSummaries.reduce((sum, i) => sum + i.accumulatedInterest, 0))}
-                  </td>
-                </tr>
-              </tfoot>
+        {/* Rodapé Executivo: Diagnóstico e Orientação */}
+        <div className="mt-3.5 p-3 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-300">
+          <div className="mt-0.5 shrink-0">
+            {financialHealth.status === 'Saudável' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            ) : financialHealth.status === 'Atenção' ? (
+              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
             )}
-          </table>
+          </div>
+          <div className="flex-1">
+            <strong className="font-bold text-slate-900 dark:text-white mr-1.5">
+              Diagnóstico Operacional:
+            </strong>
+            <span>{financialHealth.verdict}</span>
+          </div>
         </div>
       </div>
 
       {/* 4. GRÁFICOS INTERATIVOS (CHARTS) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* CHART 1: Evolução por Mês (últimos 6 meses) - Entradas vs Saídas */}
+        {/* CHART 1: Fluxo Financeiro Mensal (últimos 6 meses) - Entradas vs Saídas com Valores Fixos */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-3.5 shadow-2xs space-y-3 lg:col-span-2">
-          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
-            <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
-              <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              Evolução por Mês: Entradas (Receitas) vs Contas Pagas & Pendências
-            </h3>
-            <span className="text-[10px] text-slate-500 font-mono">Valores em R$ (Histórico de 6 meses)</span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-slate-200 dark:border-slate-800 pb-2">
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                Fluxo Financeiro Mensal
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Comparativo entre entradas, pagamentos e compromissos financeiros.
+              </p>
+            </div>
           </div>
 
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartEvolucaoData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="monthLabel" tick={{ fontSize: 11 }} />
-                <YAxis
-                  tick={{ fontSize: 10 }}
-                  tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
-                />
-                <Tooltip
-                  formatter={(val: unknown) => [formatBRL(Number(val) || 0), '']}
-                  contentStyle={{
-                    backgroundColor: '#1e293b',
-                    borderColor: '#334155',
-                    color: '#f8fafc',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                  }}
-                  itemStyle={{ color: '#f8fafc', fontWeight: 600 }}
-                  labelStyle={{ color: '#ffffff', fontWeight: 700 }}
-                />
-                <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
-                <Bar dataKey="Entradas (Receitas)" fill="#059669" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Total Pago (Despesas)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Total Atrasado" fill="#f43f5e" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Total À Vencer" fill="#94a3b8" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="w-full overflow-x-auto pb-1">
+            <div className="h-96 sm:h-[440px] min-w-[960px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={chartEvolucaoData}
+                  margin={{ top: 80, right: 70, left: 10, bottom: 5 }}
+                  barCategoryGap="8%"
+                  barGap={6}
+                >
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                  <XAxis dataKey="monthLabel" tick={{ fontSize: 11 }} />
+                  <YAxis
+                    tick={{ fontSize: 10 }}
+                    tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+                    domain={[0, (dataMax: number) => Math.ceil((dataMax * 1.35) || 1000)]}
+                  />
+                  <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                  <Bar dataKey="Entradas (Receitas)" fill="#059669" radius={[4, 4, 0, 0]}>
+                    <LabelList
+                      dataKey="Entradas (Receitas)"
+                      position="top"
+                      content={renderMonthlyBarLabel(
+                        'Entradas',
+                        0,
+                        '#047857',
+                        'fill-emerald-800 dark:fill-emerald-300'
+                      )}
+                    />
+                  </Bar>
+                  <Bar dataKey="Total Pago (Despesas)" fill="#3b82f6" radius={[4, 4, 0, 0]}>
+                    <LabelList
+                      dataKey="Total Pago (Despesas)"
+                      position="top"
+                      content={renderMonthlyBarLabel(
+                        'Pago',
+                        1,
+                        '#1d4ed8',
+                        'fill-blue-800 dark:fill-blue-300'
+                      )}
+                    />
+                  </Bar>
+                  <Bar dataKey="Total Atrasado" fill="#f43f5e" radius={[4, 4, 0, 0]}>
+                    <LabelList
+                      dataKey="Total Atrasado"
+                      position="top"
+                      content={renderMonthlyBarLabel(
+                        'Atrasado',
+                        2,
+                        '#be123c',
+                        'fill-rose-800 dark:fill-rose-300'
+                      )}
+                    />
+                  </Bar>
+                  <Bar dataKey="Total À Vencer" fill="#94a3b8" radius={[4, 4, 0, 0]}>
+                    <LabelList
+                      dataKey="Total À Vencer"
+                      position="top"
+                      content={renderMonthlyBarLabel(
+                        'À Vencer',
+                        3,
+                        '#334155',
+                        'fill-slate-800 dark:fill-slate-200'
+                      )}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
 
@@ -1255,24 +1305,66 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
                 <BarChart
                   data={chartIncomesByCompanyData}
                   layout="vertical"
-                  margin={{ top: 5, right: 20, left: 20, bottom: 5 }}
+                  margin={{ top: 5, right: 95, left: 15, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.2} />
-                  <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `R$${v}`} />
-                  <YAxis dataKey="companyName" type="category" tick={{ fontSize: 10 }} width={100} />
-                  <Tooltip
-                    formatter={(val: unknown) => [formatBRL(Number(val) || 0), 'Valor Recebido']}
-                    contentStyle={{
-                      backgroundColor: '#1e293b',
-                      borderColor: '#334155',
-                      color: '#f8fafc',
-                      borderRadius: '8px',
-                      fontSize: '12px',
+                  <XAxis
+                    type="number"
+                    tick={{ fontSize: 10, fill: '#94a3b8' }}
+                    tickFormatter={(v) => `R$${v}`}
+                  />
+                  <YAxis
+                    dataKey="companyName"
+                    type="category"
+                    width={120}
+                    tick={(props: { x?: number; y?: number; payload?: { value: string } }) => {
+                      const { x = 0, y = 0, payload } = props;
+                      return (
+                        <text
+                          x={Number(x) - 6}
+                          y={y}
+                          dy={4}
+                          textAnchor="end"
+                          fill="#FFFFFF"
+                          className="fill-slate-900 dark:fill-white font-semibold text-[11px] select-none"
+                          fontSize={11}
+                          fontWeight={600}
+                        >
+                          {payload?.value || ''}
+                        </text>
+                      );
                     }}
-                    itemStyle={{ color: '#f8fafc', fontWeight: 600 }}
-                    labelStyle={{ color: '#ffffff', fontWeight: 700 }}
                   />
                   <Bar dataKey="total" fill="#059669" radius={[0, 4, 4, 0]}>
+                    <LabelList
+                      dataKey="total"
+                      position="right"
+                      content={(props: {
+                        x?: number | string;
+                        y?: number | string;
+                        width?: number | string;
+                        height?: number | string;
+                        value?: unknown;
+                      }) => {
+                        const { x = 0, y = 0, width = 0, height = 0, value } = props;
+                        const num = Number(value);
+                        if (!num || isNaN(num) || num <= 0) return null;
+                        return (
+                          <text
+                            x={Number(x) + Number(width) + 8}
+                            y={Number(y) + Number(height) / 2}
+                            dominantBaseline="central"
+                            textAnchor="start"
+                            fill="#FFFFFF"
+                            className="fill-slate-900 dark:fill-white font-bold font-mono text-[11px] tracking-tight pointer-events-none select-none"
+                            fontSize={11}
+                            fontWeight={700}
+                          >
+                            {formatBRL(num)}
+                          </text>
+                        );
+                      }}
+                    />
                     {chartIncomesByCompanyData.map((_, index) => (
                       <Cell
                         key={`income-cell-${index}`}
@@ -1305,28 +1397,95 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
           ) : (
             <div className="h-56 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartEmployeeExpensesData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                <BarChart
+                  data={chartEmployeeExpensesData}
+                  margin={{ top: 26, right: 15, left: 10, bottom: 8 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                  <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                  <XAxis
+                    dataKey="name"
+                    tick={(props: { x?: number; y?: number; payload?: { value: string } }) => {
+                      const { x = 0, y = 0, payload } = props;
+                      return (
+                        <text
+                          x={x}
+                          y={Number(y) + 12}
+                          textAnchor="middle"
+                          fill="#FFFFFF"
+                          className="fill-slate-900 dark:fill-white font-semibold text-[11px] select-none"
+                          fontSize={11}
+                          fontWeight={600}
+                        >
+                          {payload?.value || ''}
+                        </text>
+                      );
+                    }}
+                  />
                   <YAxis
-                    tick={{ fontSize: 10 }}
+                    tick={{ fontSize: 10, fill: '#94a3b8' }}
                     tickFormatter={(val) => `R$${val}`}
                   />
-                  <Tooltip
-                    formatter={(val: unknown) => [formatBRL(Number(val) || 0), '']}
-                    contentStyle={{
-                      backgroundColor: '#1e293b',
-                      borderColor: '#334155',
-                      color: '#f8fafc',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                    }}
-                    itemStyle={{ color: '#f8fafc', fontWeight: 600 }}
-                    labelStyle={{ color: '#ffffff', fontWeight: 700 }}
-                  />
                   <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '4px' }} />
-                  <Bar dataKey="Pago" fill="#10b981" stackId="a" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="Pendente" fill="#3b82f6" stackId="a" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Pago" fill="#10b981" stackId="a" radius={[0, 0, 0, 0]}>
+                    <LabelList
+                      dataKey="Pago"
+                      position="center"
+                      content={(props: {
+                        x?: number | string;
+                        y?: number | string;
+                        width?: number | string;
+                        height?: number | string;
+                        value?: unknown;
+                      }) => {
+                        const { x = 0, y = 0, width = 0, height = 0, value } = props;
+                        const num = Number(value);
+                        if (!num || isNaN(num) || num <= 50) return null;
+                        return (
+                          <text
+                            x={Number(x) + Number(width) / 2}
+                            y={Number(y) + Number(height) / 2}
+                            textAnchor="middle"
+                            dominantBaseline="central"
+                            fill="#FFFFFF"
+                            className="fill-white font-bold font-mono text-[10px] tracking-tight pointer-events-none select-none"
+                            fontSize={10}
+                            fontWeight={700}
+                          >
+                            {formatBRL(num)}
+                          </text>
+                        );
+                      }}
+                    />
+                  </Bar>
+                  <Bar dataKey="Pendente" fill="#3b82f6" stackId="a" radius={[4, 4, 0, 0]}>
+                    <LabelList
+                      dataKey="Pendente"
+                      position="top"
+                      content={(props: {
+                        x?: number | string;
+                        y?: number | string;
+                        width?: number | string;
+                        value?: unknown;
+                      }) => {
+                        const { x = 0, y = 0, width = 0, value } = props;
+                        const num = Number(value);
+                        if (!num || isNaN(num) || num <= 0) return null;
+                        return (
+                          <text
+                            x={Number(x) + Number(width) / 2}
+                            y={Number(y) - 6}
+                            textAnchor="middle"
+                            fill="#FFFFFF"
+                            className="fill-slate-900 dark:fill-white font-bold font-mono text-[10px] tracking-tight pointer-events-none select-none"
+                            fontSize={10}
+                            fontWeight={700}
+                          >
+                            {formatBRL(num)}
+                          </text>
+                        );
+                      }}
+                    />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1353,28 +1512,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
                 <BarChart
                   data={chartTopEntitiesData}
                   layout="vertical"
-                  margin={{ top: 5, right: 20, left: 20, bottom: 5 }}
+                  margin={{ top: 5, right: 95, left: 20, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.2} />
-                  <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `R$${v}`} />
-                  <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={120} />
-                  <Tooltip
-                    formatter={(val: unknown) => [formatBRL(Number(val) || 0), 'Total']}
-                    contentStyle={{
-                      backgroundColor: '#1e293b',
-                      borderColor: '#334155',
-                      color: '#f8fafc',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                    }}
-                    itemStyle={{ color: '#f8fafc', fontWeight: 600 }}
-                    labelStyle={{ color: '#ffffff', fontWeight: 700 }}
+                  <XAxis
+                    type="number"
+                    tick={{ fontSize: 10, fill: '#94a3b8' }}
+                    tickFormatter={(v) => `R$${v}`}
                   />
-                  <Bar dataKey="total" radius={[0, 4, 4, 0]}>
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    width={130}
+                    tick={(props: { x?: number; y?: number; payload?: { value: string } }) => {
+                      const { x = 0, y = 0, payload } = props;
+                      return (
+                        <text
+                          x={Number(x) - 6}
+                          y={y}
+                          dy={4}
+                          textAnchor="end"
+                          fill="#FFFFFF"
+                          className="fill-slate-900 dark:fill-white font-semibold text-[11px] select-none"
+                          fontSize={11}
+                          fontWeight={600}
+                        >
+                          {payload?.value || ''}
+                        </text>
+                      );
+                    }}
+                  />
+                  <Bar dataKey="total" fill="#6366f1" radius={[0, 4, 4, 0]}>
+                    <LabelList
+                      dataKey="total"
+                      position="right"
+                      content={(props: {
+                        x?: number | string;
+                        y?: number | string;
+                        width?: number | string;
+                        height?: number | string;
+                        value?: unknown;
+                      }) => {
+                        const { x = 0, y = 0, width = 0, height = 0, value } = props;
+                        const num = Number(value);
+                        if (!num || isNaN(num) || num <= 0) return null;
+                        return (
+                          <text
+                            x={Number(x) + Number(width) + 8}
+                            y={Number(y) + Number(height) / 2}
+                            dominantBaseline="central"
+                            textAnchor="start"
+                            fill="#FFFFFF"
+                            className="fill-slate-900 dark:fill-white font-bold font-mono text-[11px] tracking-tight pointer-events-none select-none"
+                            fontSize={11}
+                            fontWeight={700}
+                          >
+                            {formatBRL(num)}
+                          </text>
+                        );
+                      }}
+                    />
                     {chartTopEntitiesData.map((item, index) => (
                       <Cell
                         key={`top-cell-${index}`}
-                        fill={item.type === 'Fornecedor' ? '#6366f1' : '#0ea5e9'}
+                        fill={item.type === 'Fornecedor' ? '#6366f1' : '#8b5cf6'}
                       />
                     ))}
                   </Bar>
@@ -1436,7 +1637,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={supplierDebtData.monthsData}
-                  margin={{ top: 15, right: 15, left: 15, bottom: 5 }}
+                  margin={{ top: 25, right: 15, left: 15, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                   <XAxis dataKey="monthLabel" tick={{ fontSize: 11 }} />
@@ -1444,24 +1645,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ entries, suppliers, employ
                     tick={{ fontSize: 10 }}
                     tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
                   />
-                  <Tooltip
-                    formatter={(val: unknown) => [formatBRL(Number(val) || 0), 'Dívida Pendente']}
-                    contentStyle={{
-                      backgroundColor: '#1e293b',
-                      borderColor: '#334155',
-                      color: '#f8fafc',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                    }}
-                    itemStyle={{ color: '#f8fafc', fontWeight: 600 }}
-                    labelStyle={{ color: '#ffffff', fontWeight: 700 }}
-                  />
                   <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '4px' }} />
                   <Bar
                     dataKey="Dívida Pendente"
                     fill="#f43f5e"
                     radius={[4, 4, 0, 0]}
-                  />
+                  >
+                    <LabelList
+                      dataKey="Dívida Pendente"
+                      position="top"
+                      formatter={(v) => (typeof v === 'number' && v > 0 ? formatBRL(v) : '')}
+                      style={{ fontSize: '10px', fontWeight: '700', fill: '#be123c' }}
+                    />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
