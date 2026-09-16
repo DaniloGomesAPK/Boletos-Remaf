@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { CalculatedEntry } from '../types';
+import { CalculatedEntry, IncomeEntry } from '../types';
 import { formatBRL, parseBRDate, getTodayDateString } from '../utils/calculations';
 import {
   ArrowLeft,
@@ -15,23 +15,77 @@ import {
   Receipt,
   Layers,
   TrendingDown,
+  TrendingUp,
+  X,
 } from 'lucide-react';
 
 export interface StatusDetailsViewProps {
-  entries: CalculatedEntry[];
-  type: 'overdue' | 'to-pay';
+  entries?: CalculatedEntry[];
+  incomes?: IncomeEntry[];
+  type: 'overdue' | 'to-pay' | 'paid' | 'incomes';
   onBack: () => void;
 }
 
 export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
-  entries,
+  entries = [],
+  incomes = [],
   type,
   onBack,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [subFilter, setSubFilter] = useState<'all' | 'period1' | 'period2'>('all');
+  const [subFilter, setSubFilter] = useState<'all' | 'period1' | 'period2' | 'custom'>('all');
+  const [isCustomDateModalOpen, setIsCustomDateModalOpen] = useState(false);
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [tempStartDate, setTempStartDate] = useState('');
+  const [tempEndDate, setTempEndDate] = useState('');
 
   const todayStr = useMemo(() => getTodayDateString(), []);
+
+  const isOverdue = type === 'overdue';
+  const isToPay = type === 'to-pay';
+  const isPaid = type === 'paid';
+  const isIncomes = type === 'incomes';
+
+  const handleOpenCustomDateModal = () => {
+    setTempStartDate(customStartDate);
+    setTempEndDate(customEndDate);
+    setIsCustomDateModalOpen(true);
+  };
+
+  const handleCloseCustomDateModal = () => {
+    setIsCustomDateModalOpen(false);
+  };
+
+  const handleConfirmCustomDateModal = () => {
+    let start = tempStartDate.trim();
+    let end = tempEndDate.trim();
+
+    if (!start && !end) {
+      alert('Por favor, informe pelo menos uma data (inicial ou final).');
+      return;
+    }
+
+    if (start && end && start > end) {
+      const swap = start;
+      start = end;
+      end = swap;
+    }
+
+    setCustomStartDate(start);
+    setCustomEndDate(end);
+    setSubFilter('custom');
+    setIsCustomDateModalOpen(false);
+  };
+
+  const handleClearCustomFilter = () => {
+    setTempStartDate('');
+    setTempEndDate('');
+    setCustomStartDate('');
+    setCustomEndDate('');
+    setSubFilter('all');
+    setIsCustomDateModalOpen(false);
+  };
 
   // Helper para cálculo dos dias de diferença em relação a hoje
   const getDaysDiff = (dueDateStr: string, currentDayStr: string) => {
@@ -47,32 +101,63 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
     }
   };
 
-  // 1. Filtrar estritamente por status
+  // 1. Filtrar estritamente por status / tipo
   const targetEntries = useMemo(() => {
-    return entries
+    if (isIncomes) {
+      return (incomes || [])
+        .map((inc) => ({
+          id: inc.id,
+          favorecidoId: `income-${inc.id}`,
+          favorecidoName: inc.companyName || 'Empresa não informada',
+          favorecidoType: 'Fornecedor' as const,
+          docType: 'Outros' as const,
+          nfNumber: inc.description || '',
+          dueDate: inc.date,
+          paymentDate: inc.date,
+          value: inc.value,
+          interestRate: 0,
+          status: 'Pago' as const,
+          daysOverdue: 0,
+          interestValue: 0,
+          totalWithInterest: inc.value,
+          monthYear: '',
+        }))
+        .sort((a, b) => b.dueDate.localeCompare(a.dueDate)); // mais recentes primeiro
+    }
+
+    return (entries || [])
       .filter((e) => {
-        if (type === 'overdue') {
+        if (isOverdue) {
           return e.status === 'Atrasado';
-        } else {
+        } else if (isToPay) {
           return e.status === 'À Vencer';
+        } else if (isPaid) {
+          return e.status === 'Pago';
         }
+        return false;
       })
       .sort((a, b) => {
-        // Para atrasados: ordenar pelos mais antigos ou maior valor
-        if (type === 'overdue') {
+        if (isOverdue) {
           if (a.dueDate !== b.dueDate) {
             return a.dueDate.localeCompare(b.dueDate); // mais atrasados primeiro
           }
           return (b.totalWithInterest || 0) - (a.totalWithInterest || 0);
-        } else {
-          // Para à vencer: cronológico ascendente (vencimentos mais próximos primeiro)
+        } else if (isToPay) {
           if (a.dueDate !== b.dueDate) {
             return a.dueDate.localeCompare(b.dueDate);
           }
           return (b.totalWithInterest || 0) - (a.totalWithInterest || 0);
+        } else {
+          // Para pagos: cronológico decrescente (pagamentos mais recentes primeiro)
+          const dateA = a.paymentDate || a.dueDate;
+          const dateB = b.paymentDate || b.dueDate;
+          if (dateA !== dateB) {
+            return dateB.localeCompare(dateA);
+          }
+          return (b.totalWithInterest || 0) - (a.totalWithInterest || 0);
         }
       });
-  }, [entries, type]);
+  }, [entries, incomes, isOverdue, isToPay, isPaid, isIncomes]);
 
   // Cálculos de Resumo Financeiro
   const totalAmount = useMemo(() => {
@@ -116,18 +201,94 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
     return next7DaysEntries.reduce((sum, e) => sum + (e.totalWithInterest || 0), 0);
   }, [next7DaysEntries]);
 
+  // Métricas específicas para Pago (Saídas)
+  const paidLast30DaysEntries = useMemo(() => {
+    return targetEntries.filter((e) => {
+      const pDate = e.paymentDate || e.dueDate;
+      const days = Math.abs(getDaysDiff(pDate, todayStr));
+      return days <= 30;
+    });
+  }, [targetEntries, todayStr]);
+
+  const totalPaidLast30Days = useMemo(() => {
+    return paidLast30DaysEntries.reduce((sum, e) => sum + (e.totalWithInterest || 0), 0);
+  }, [paidLast30DaysEntries]);
+
+  const countPaidMoreThan30Days = targetEntries.length - paidLast30DaysEntries.length;
+
+  // Métricas específicas para Entradas (Receitas)
+  const incomesLast30DaysEntries = useMemo(() => {
+    return targetEntries.filter((e) => {
+      const days = Math.abs(getDaysDiff(e.dueDate, todayStr));
+      return days <= 30;
+    });
+  }, [targetEntries, todayStr]);
+
+  const totalIncomesLast30Days = useMemo(() => {
+    return incomesLast30DaysEntries.reduce((sum, e) => sum + (e.totalWithInterest || 0), 0);
+  }, [incomesLast30DaysEntries]);
+
+  const countIncomesMoreThan30Days = targetEntries.length - incomesLast30DaysEntries.length;
+
+  // Quantidade de registros dentro do período personalizado
+  const countCustom = useMemo(() => {
+    if (!customStartDate && !customEndDate) return 0;
+    return targetEntries.filter((e) => {
+      let itemDate = e.dueDate;
+      if (isPaid) {
+        itemDate = e.paymentDate || e.dueDate;
+      } else if (isIncomes) {
+        itemDate = e.paymentDate || e.dueDate;
+      } else {
+        itemDate = e.dueDate;
+      }
+      if (customStartDate && itemDate < customStartDate) return false;
+      if (customEndDate && itemDate > customEndDate) return false;
+      return true;
+    }).length;
+  }, [targetEntries, isPaid, isIncomes, customStartDate, customEndDate]);
+
   // Filtragem de busca e subfiltros
   const filteredEntries = useMemo(() => {
     return targetEntries.filter((e) => {
       // Subfiltro
-      if (type === 'overdue') {
+      if (isOverdue) {
         const days = e.daysOverdue || Math.abs(getDaysDiff(e.dueDate, todayStr));
         if (subFilter === 'period1' && days > 30) return false;
         if (subFilter === 'period2' && days <= 30) return false;
-      } else {
+        if (subFilter === 'custom') {
+          const itemDate = e.dueDate;
+          if (customStartDate && itemDate < customStartDate) return false;
+          if (customEndDate && itemDate > customEndDate) return false;
+        }
+      } else if (isToPay) {
         const days = getDaysDiff(e.dueDate, todayStr);
         if (subFilter === 'period1' && days !== 0) return false; // Vencem Hoje
         if (subFilter === 'period2' && (days < 0 || days > 7)) return false; // Próximos 7 dias
+        if (subFilter === 'custom') {
+          const itemDate = e.dueDate;
+          if (customStartDate && itemDate < customStartDate) return false;
+          if (customEndDate && itemDate > customEndDate) return false;
+        }
+      } else if (isPaid) {
+        const pDate = e.paymentDate || e.dueDate;
+        const days = Math.abs(getDaysDiff(pDate, todayStr));
+        if (subFilter === 'period1' && days > 30) return false; // Últimos 30 dias
+        if (subFilter === 'period2' && days <= 30) return false; // Anteriores
+        if (subFilter === 'custom') {
+          const itemDate = e.paymentDate || e.dueDate;
+          if (customStartDate && itemDate < customStartDate) return false;
+          if (customEndDate && itemDate > customEndDate) return false;
+        }
+      } else if (isIncomes) {
+        const days = Math.abs(getDaysDiff(e.dueDate, todayStr));
+        if (subFilter === 'period1' && days > 30) return false; // Últimos 30 dias
+        if (subFilter === 'period2' && days <= 30) return false; // Anteriores
+        if (subFilter === 'custom') {
+          const itemDate = e.paymentDate || e.dueDate;
+          if (customStartDate && itemDate < customStartDate) return false;
+          if (customEndDate && itemDate > customEndDate) return false;
+        }
       }
 
       // Busca textual
@@ -136,7 +297,7 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
       const favName = (e.favorecidoName || '').toLowerCase();
       const docType = (e.docType || '').toLowerCase();
       const nfNum = (e.nfNumber || '').toLowerCase();
-      const dateBr = parseBRDate(e.dueDate).toLowerCase();
+      const dateBr = parseBRDate(e.paymentDate || e.dueDate).toLowerCase();
 
       return (
         favName.includes(term) ||
@@ -145,9 +306,15 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
         dateBr.includes(term)
       );
     });
-  }, [targetEntries, type, subFilter, searchTerm, todayStr]);
+  }, [targetEntries, isOverdue, isToPay, isPaid, isIncomes, subFilter, customStartDate, customEndDate, searchTerm, todayStr]);
 
-  const isOverdue = type === 'overdue';
+  const backButtonId = isOverdue
+    ? 'btn-voltar-dashboard-atrasados'
+    : isToPay
+    ? 'btn-voltar-dashboard-a-vencer'
+    : isPaid
+    ? 'btn-voltar-dashboard-pagos'
+    : 'btn-voltar-dashboard-entradas';
 
   return (
     <div className="space-y-5 animate-in fade-in duration-200 w-full">
@@ -155,7 +322,7 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
       <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
         <button
           type="button"
-          id={isOverdue ? 'btn-voltar-dashboard-atrasados' : 'btn-voltar-dashboard-a-vencer'}
+          id={backButtonId}
           onClick={onBack}
           className="inline-flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-bold rounded-lg text-black dark:text-white bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 shadow-xs transition-all cursor-pointer hover:translate-x-[-2px]"
         >
@@ -178,23 +345,41 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
                 className={`p-2.5 rounded-xl border ${
                   isOverdue
                     ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-900/50'
-                    : 'bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-900/50'
+                    : isToPay
+                    ? 'bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-900/50'
+                    : isPaid
+                    ? 'bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700'
+                    : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50'
                 }`}
               >
                 {isOverdue ? (
                   <AlertTriangle className="w-5 h-5" />
-                ) : (
+                ) : isToPay ? (
                   <Calendar className="w-5 h-5" />
+                ) : isPaid ? (
+                  <Receipt className="w-5 h-5" />
+                ) : (
+                  <TrendingUp className="w-5 h-5" />
                 )}
               </span>
               <div>
                 <h1 className="text-xl sm:text-2xl font-black tracking-tight text-black dark:text-white">
-                  {isOverdue ? 'Total Atrasado' : 'Total À Vencer'}
+                  {isOverdue
+                    ? 'Total Atrasado'
+                    : isToPay
+                    ? 'Total À Vencer'
+                    : isPaid
+                    ? 'Total Pago (Saídas)'
+                    : 'Total Entradas'}
                 </h1>
                 <p className="text-xs sm:text-sm text-black dark:text-slate-200 mt-0.5 font-medium">
                   {isOverdue
                     ? 'Contas com status vencido/atrasado pendentes de pagamento'
-                    : 'Contas programadas com status À Vencer aguardando quitação'}
+                    : isToPay
+                    ? 'Contas programadas com status À Vencer aguardando quitação'
+                    : isPaid
+                    ? 'Compromissos financeiros quitados e histórico de pagamentos'
+                    : 'Receitas operacionais e histórico de recebimentos financeiros'}
                 </p>
               </div>
             </div>
@@ -205,7 +390,11 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-black uppercase tracking-wider ${
                 isOverdue
                   ? 'bg-rose-100 text-black dark:bg-rose-950/80 dark:text-rose-200 border-2 border-rose-300 dark:border-rose-800'
-                  : 'bg-blue-100 text-black dark:bg-blue-950/80 dark:text-blue-200 border-2 border-blue-300 dark:border-blue-800'
+                  : isToPay
+                  ? 'bg-blue-100 text-black dark:bg-blue-950/80 dark:text-blue-200 border-2 border-blue-300 dark:border-blue-800'
+                  : isPaid
+                  ? 'bg-slate-200 text-black dark:bg-slate-800 dark:text-slate-200 border-2 border-slate-300 dark:border-slate-700'
+                  : 'bg-emerald-100 text-black dark:bg-emerald-950/80 dark:text-emerald-200 border-2 border-emerald-300 dark:border-emerald-800'
               }`}
             >
               {isOverdue ? (
@@ -213,10 +402,20 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
                   <AlertCircle className="w-3.5 h-3.5 text-black dark:text-rose-400" />
                   Status: Atrasado
                 </>
-              ) : (
+              ) : isToPay ? (
                 <>
                   <Clock className="w-3.5 h-3.5 text-black dark:text-blue-400" />
                   Status: À Vencer
+                </>
+              ) : isPaid ? (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-black dark:text-slate-300" />
+                  Status: Pago
+                </>
+              ) : (
+                <>
+                  <TrendingUp className="w-3.5 h-3.5 text-black dark:text-emerald-400" />
+                  Status: Entradas
                 </>
               )}
             </span>
@@ -230,18 +429,32 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
             className={`p-4 rounded-xl border ${
               isOverdue
                 ? 'bg-rose-50/70 dark:bg-rose-950/20 border-rose-200/80 dark:border-rose-900/40'
-                : 'bg-blue-50/70 dark:bg-blue-950/20 border-blue-200/80 dark:border-blue-900/40'
+                : isToPay
+                ? 'bg-blue-50/70 dark:bg-blue-950/20 border-blue-200/80 dark:border-blue-900/40'
+                : isPaid
+                ? 'bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700'
+                : 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-200/80 dark:border-emerald-900/40'
             }`}
           >
             <div className="flex items-center justify-between">
-              <span
-                className="text-xs font-bold uppercase tracking-wider text-black dark:text-slate-200"
-              >
-                {isOverdue ? 'Total em Atraso' : 'Total a Vencer'}
+              <span className="text-xs font-bold uppercase tracking-wider text-black dark:text-slate-200">
+                {isOverdue
+                  ? 'Total em Atraso'
+                  : isToPay
+                  ? 'Total a Vencer'
+                  : isPaid
+                  ? 'Total Quitado'
+                  : 'Total Recebido'}
               </span>
               <DollarSign
                 className={`w-4 h-4 ${
-                  isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-blue-600 dark:text-blue-400'
+                  isOverdue
+                    ? 'text-rose-600 dark:text-rose-400'
+                    : isToPay
+                    ? 'text-blue-600 dark:text-blue-400'
+                    : isPaid
+                    ? 'text-slate-700 dark:text-slate-300'
+                    : 'text-emerald-600 dark:text-emerald-400'
                 }`}
               />
             </div>
@@ -251,7 +464,11 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
             <p className="text-[11px] text-black dark:text-slate-300 mt-1 font-medium">
               {isOverdue
                 ? 'Montante consolidado com encargos e juros previstos'
-                : 'Montante total de compromissos programados'}
+                : isToPay
+                ? 'Montante total de compromissos programados'
+                : isPaid
+                ? 'Montante consolidado de pagamentos e saídas realizadas'
+                : 'Montante consolidado de receitas e entradas financeiras'}
             </p>
           </div>
 
@@ -259,7 +476,7 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
           <div className="p-4 rounded-xl bg-white border border-slate-200 dark:border-slate-700/80">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Quantidade de contas
+                {isIncomes ? 'Quantidade de entradas' : 'Quantidade de contas'}
               </span>
               <Receipt className="w-4 h-4 text-slate-700" />
             </div>
@@ -269,7 +486,11 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
             <p className="text-[11px] text-slate-700 mt-1 font-medium">
               {isOverdue
                 ? `${totalCount === 1 ? '1 conta em atraso' : `${totalCount} contas em atraso`}`
-                : `${totalCount === 1 ? '1 conta programada' : `${totalCount} contas programadas`}`}
+                : isToPay
+                ? `${totalCount === 1 ? '1 conta programada' : `${totalCount} contas programadas`}`
+                : isPaid
+                ? `${totalCount === 1 ? '1 pagamento realizado' : `${totalCount} pagamentos realizados`}`
+                : `${totalCount === 1 ? '1 entrada confirmada' : `${totalCount} entradas confirmadas`}`}
             </p>
           </div>
 
@@ -277,21 +498,39 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
           <div className="p-4 rounded-xl bg-white border border-slate-200 dark:border-slate-700/80 sm:col-span-2 lg:col-span-1">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                {isOverdue ? 'Juros Acumulados' : 'Próximos 7 Dias'}
+                {isOverdue
+                  ? 'Juros Acumulados'
+                  : isToPay
+                  ? 'Próximos 7 Dias'
+                  : 'Últimos 30 Dias'}
               </span>
               {isOverdue ? (
                 <TrendingDown className="w-4 h-4 text-rose-500" />
-              ) : (
+              ) : isToPay ? (
                 <Clock className="w-4 h-4 text-amber-500" />
+              ) : isPaid ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              ) : (
+                <TrendingUp className="w-4 h-4 text-emerald-500" />
               )}
             </div>
             <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-slate-900 mt-1 tabular-nums">
-              {isOverdue ? formatBRL(totalInterest) : formatBRL(totalNext7Days)}
+              {isOverdue
+                ? formatBRL(totalInterest)
+                : isToPay
+                ? formatBRL(totalNext7Days)
+                : isPaid
+                ? formatBRL(totalPaidLast30Days)
+                : formatBRL(totalIncomesLast30Days)}
             </div>
             <p className="text-[11px] text-slate-700 mt-1 font-medium">
               {isOverdue
                 ? 'Valor acumulado por dias de atraso'
-                : `${next7DaysEntries.length} ${next7DaysEntries.length === 1 ? 'conta na próxima semana' : 'contas na próxima semana'}`}
+                : isToPay
+                ? `${next7DaysEntries.length} ${next7DaysEntries.length === 1 ? 'conta na próxima semana' : 'contas na próxima semana'}`
+                : isPaid
+                ? `${paidLast30DaysEntries.length} ${paidLast30DaysEntries.length === 1 ? 'pagamento recente' : 'pagamentos recentes'}`
+                : `${incomesLast30DaysEntries.length} ${incomesLast30DaysEntries.length === 1 ? 'recebimento recente' : 'recebimentos recentes'}`}
             </p>
           </div>
         </div>
@@ -303,7 +542,11 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-black dark:text-slate-400" />
           <input
             type="text"
-            placeholder="Buscar por fornecedor, documento ou data..."
+            placeholder={
+              isIncomes
+                ? 'Buscar por empresa, descrição ou data...'
+                : 'Buscar por fornecedor, documento ou data...'
+            }
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-black dark:text-white placeholder:text-slate-500 font-medium focus:outline-hidden focus:ring-2 focus:ring-blue-500"
@@ -319,7 +562,11 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
               subFilter === 'all'
                 ? isOverdue
                   ? 'bg-rose-600 text-white shadow-xs'
-                  : 'bg-blue-600 text-white shadow-xs'
+                  : isToPay
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : isPaid
+                  ? 'bg-slate-800 dark:bg-slate-700 text-white shadow-xs'
+                  : 'bg-emerald-600 text-white shadow-xs'
                 : 'bg-slate-100 dark:bg-slate-800 text-black dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
             }`}
           >
@@ -351,7 +598,7 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
                 + de 30 dias ({countOverdueMoreThan30Days})
               </button>
             </>
-          ) : (
+          ) : isToPay ? (
             <>
               <button
                 type="button"
@@ -376,21 +623,157 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
                 Próximos 7 dias ({next7DaysEntries.length})
               </button>
             </>
+          ) : isPaid ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setSubFilter('period1')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  subFilter === 'period1'
+                    ? 'bg-slate-800 dark:bg-slate-700 text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-black dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                Últimos 30 dias ({paidLast30DaysEntries.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSubFilter('period2')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  subFilter === 'period2'
+                    ? 'bg-slate-900 dark:bg-slate-600 text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-black dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                Anteriores ({countPaidMoreThan30Days})
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setSubFilter('period1')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  subFilter === 'period1'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-black dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                Últimos 30 dias ({incomesLast30DaysEntries.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSubFilter('period2')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  subFilter === 'period2'
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-black dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                Anteriores ({countIncomesMoreThan30Days})
+              </button>
+            </>
           )}
+
+          {/* Nova opção: Personalizado 📅 */}
+          <button
+            type="button"
+            id={`btn-filtro-personalizado-${type}`}
+            onClick={handleOpenCustomDateModal}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+              subFilter === 'custom'
+                ? isOverdue
+                  ? 'bg-rose-600 text-white shadow-xs'
+                  : isToPay
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : isPaid
+                  ? 'bg-slate-800 dark:bg-slate-700 text-white shadow-xs'
+                  : 'bg-emerald-600 text-white shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-black dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+            }`}
+          >
+            <span>Personalizado 📅</span>
+            {subFilter === 'custom' && (customStartDate || customEndDate) && (
+              <span className="text-[10px] bg-black/20 dark:bg-white/20 px-1.5 py-0.2 rounded font-mono">
+                {countCustom}
+              </span>
+            )}
+          </button>
         </div>
       </div>
+
+      {/* Indicador do Período Personalizado Ativo */}
+      {subFilter === 'custom' && (customStartDate || customEndDate) && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xs">
+          <div className="flex items-center gap-2">
+            <Calendar
+              className={`w-3.5 h-3.5 ${
+                isOverdue
+                  ? 'text-rose-500'
+                  : isToPay
+                  ? 'text-blue-500'
+                  : isPaid
+                  ? 'text-slate-600 dark:text-slate-400'
+                  : 'text-emerald-500'
+              }`}
+            />
+            <span className="text-slate-700 dark:text-slate-300">
+              Período selecionado ({isOverdue || isToPay ? 'Vencimento' : isPaid ? 'Pagamento' : 'Recebimento'}):{' '}
+              <strong className="font-bold text-black dark:text-white">
+                {customStartDate ? parseBRDate(customStartDate) : 'Início'} até{' '}
+                {customEndDate ? parseBRDate(customEndDate) : 'Fim'}
+              </strong>
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              id={`btn-alterar-periodo-${type}`}
+              onClick={handleOpenCustomDateModal}
+              className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+            >
+              Alterar período
+            </button>
+            <button
+              type="button"
+              id={`btn-limpar-periodo-tag-${type}`}
+              onClick={handleClearCustomFilter}
+              className="text-[11px] font-bold text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer inline-flex items-center gap-1"
+            >
+              <X className="w-3 h-3" />
+              Limpar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Grid de Cards dos Lançamentos */}
       <div className="space-y-3">
         <div className="flex items-center justify-between px-1">
           <h2 className="text-sm font-black uppercase tracking-wider text-black dark:text-white flex items-center gap-2">
             <Layers
-              className={`w-4 h-4 ${isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-blue-600 dark:text-blue-400'}`}
+              className={`w-4 h-4 ${
+                isOverdue
+                  ? 'text-rose-600 dark:text-rose-400'
+                  : isToPay
+                  ? 'text-blue-600 dark:text-blue-400'
+                  : isPaid
+                  ? 'text-slate-700 dark:text-slate-300'
+                  : 'text-emerald-600 dark:text-emerald-400'
+              }`}
             />
-            <span>{isOverdue ? 'Contas em Atraso' : 'Contas Programadas a Vencer'}</span>
+            <span>
+              {isOverdue
+                ? 'Contas em Atraso'
+                : isToPay
+                ? 'Contas Programadas a Vencer'
+                : isPaid
+                ? 'Contas e Saídas Pagas'
+                : 'Receitas e Entradas Financeiras'}
+            </span>
           </h2>
           <span className="text-xs text-black dark:text-slate-200 font-bold">
-            Exibindo {filteredEntries.length} de {targetEntries.length} contas
+            Exibindo {filteredEntries.length} de {targetEntries.length} {isIncomes ? 'entradas' : 'contas'}
           </span>
         </div>
 
@@ -403,14 +786,22 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
               {targetEntries.length === 0
                 ? isOverdue
                   ? 'Nenhuma conta atrasada no momento'
-                  : 'Nenhuma conta à vencer programada'
+                  : isToPay
+                  ? 'Nenhuma conta à vencer programada'
+                  : isPaid
+                  ? 'Nenhuma conta paga encontrada'
+                  : 'Nenhuma entrada financeira encontrada'
                 : 'Nenhum lançamento encontrado com o filtro aplicado'}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mt-1">
               {targetEntries.length === 0
                 ? isOverdue
                   ? 'Parabéns! Todos os compromissos financeiros estão rigorosamente em dia.'
-                  : 'Não há contas com status À Vencer cadastradas.'
+                  : isToPay
+                  ? 'Não há contas com status À Vencer cadastradas.'
+                  : isPaid
+                  ? 'Não há registros de compromissos quitados no momento.'
+                  : 'Não há registros de receitas e recebimentos no momento.'
                 : 'Tente alterar os termos da busca ou selecione outro filtro rápido.'}
             </p>
             {targetEntries.length === 0 && (
@@ -430,17 +821,29 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
               const daysOverdue = entry.daysOverdue || Math.abs(diffDays);
               const isToday = diffDays === 0;
 
-              // 1. Fornecedor: Nome real
-              const fornecedorNome = entry.favorecidoName || 'Fornecedor não informado';
+              // 1. Fornecedor / Empresa: Nome real
+              const fornecedorNome = entry.favorecidoName || (isIncomes ? 'Empresa não informada' : 'Fornecedor não informado');
 
-              // 2. Documento: Tipo do documento com NF
+              // 2. Documento: Tipo do documento com NF ou Descrição
               const tipoDocumento = entry.docType || 'Outros';
-              const documentoTexto = entry.nfNumber
+              const documentoTexto = isIncomes
+                ? (entry.nfNumber || 'Recebimento operacional')
+                : entry.nfNumber
                 ? `${tipoDocumento} • Nº ${entry.nfNumber}`
                 : tipoDocumento;
 
-              // 3. Data de vencimento
-              const dataVencimento = entry.dueDate ? parseBRDate(entry.dueDate) : '-';
+              // 3. Data de vencimento ou pagamento
+              const dataExibicao = isPaid && entry.paymentDate
+                ? parseBRDate(entry.paymentDate)
+                : entry.dueDate
+                ? parseBRDate(entry.dueDate)
+                : '-';
+
+              const dataLabel = isPaid
+                ? 'Data de Pagamento'
+                : isIncomes
+                ? 'Data de Recebimento'
+                : 'Data de Vencimento';
 
               // 4. Valor: entry.totalWithInterest
               const valorFormatado = formatBRL(entry.totalWithInterest);
@@ -452,7 +855,7 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
               if (isOverdue) {
                 statusLabel = `Atrasado (${daysOverdue} ${daysOverdue === 1 ? 'dia' : 'dias'})`;
                 badgeClasses = 'bg-rose-100 text-black border-2 border-rose-300 dark:bg-rose-950/90 dark:text-rose-200 dark:border-rose-800';
-              } else {
+              } else if (isToPay) {
                 if (isToday) {
                   statusLabel = 'Vence hoje';
                   badgeClasses = 'bg-rose-100 text-black border-2 border-rose-300 dark:bg-rose-950/90 dark:text-rose-200 dark:border-rose-800 animate-pulse';
@@ -463,6 +866,12 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
                   statusLabel = `Em ${diffDays} dias`;
                   badgeClasses = 'bg-blue-50 text-black border-2 border-blue-200 dark:bg-blue-950/70 dark:text-blue-200 dark:border-blue-900/60';
                 }
+              } else if (isPaid) {
+                statusLabel = 'Pago / Quitado';
+                badgeClasses = 'bg-slate-200 text-black border-2 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700';
+              } else {
+                statusLabel = 'Recebido';
+                badgeClasses = 'bg-emerald-100 text-black border-2 border-emerald-300 dark:bg-emerald-950/90 dark:text-emerald-200 dark:border-emerald-800';
               }
 
               return (
@@ -471,8 +880,10 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
                   className={`p-4 rounded-xl border transition-all hover:shadow-md bg-white dark:bg-slate-900 flex flex-col justify-between gap-3 ${
                     isOverdue
                       ? 'border-rose-200 dark:border-rose-900/60 hover:border-rose-300'
-                      : isToday
+                      : isToPay && isToday
                       ? 'border-rose-300 dark:border-rose-900/60 shadow-xs shadow-rose-100/50 dark:shadow-none bg-gradient-to-br from-rose-50/20 via-white to-white dark:from-rose-950/10 dark:via-slate-900 dark:to-slate-900'
+                      : isIncomes
+                      ? 'border-emerald-200 dark:border-emerald-900/60 hover:border-emerald-300'
                       : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                   }`}
                 >
@@ -483,16 +894,18 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
                         className={`p-2 rounded-lg shrink-0 mt-0.5 ${
                           isOverdue
                             ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300'
-                            : isToday
+                            : isToPay && isToday
                             ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300'
+                            : isIncomes
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300'
                             : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
                         }`}
                       >
-                        <Building2 className="w-4 h-4" />
+                        {isIncomes ? <TrendingUp className="w-4 h-4" /> : <Building2 className="w-4 h-4" />}
                       </div>
                       <div className="min-w-0">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-black dark:text-slate-300 block">
-                          Fornecedor
+                          {isIncomes ? 'Empresa / Origem' : 'Fornecedor'}
                         </span>
                         <h3
                           className="font-black text-sm sm:text-base text-black dark:text-white truncate"
@@ -507,16 +920,20 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
                     <span
                       className={`inline-flex items-center gap-1 text-[11px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shrink-0 border ${badgeClasses}`}
                     >
-                      {(isOverdue || isToday) && <AlertCircle className="w-3 h-3 text-black dark:text-rose-300" />}
+                      {(isOverdue || (isToPay && isToday)) && (
+                        <AlertCircle className="w-3 h-3 text-black dark:text-rose-300" />
+                      )}
+                      {isPaid && <CheckCircle2 className="w-3 h-3 text-black dark:text-slate-300" />}
+                      {isIncomes && <TrendingUp className="w-3 h-3 text-black dark:text-emerald-300" />}
                       <span>{statusLabel}</span>
                     </span>
                   </div>
 
-                  {/* Informações Centrais: Bloco Branco de Alto Contraste (Documento e Vencimento) */}
+                  {/* Informações Centrais: Bloco Branco de Alto Contraste (Documento e Vencimento / Pagamento) */}
                   <div className="grid grid-cols-2 gap-2 py-2.5 px-3 rounded-lg bg-white border border-slate-300 text-xs shadow-2xs">
                     <div className="min-w-0">
                       <span className="text-[10px] font-black uppercase tracking-wider text-black block">
-                        Documento
+                        {isIncomes ? 'Descrição' : 'Documento'}
                       </span>
                       <div className="flex items-center gap-1.5 text-black font-bold text-xs mt-0.5 min-w-0">
                         <FileText className="w-3.5 h-3.5 text-black shrink-0" />
@@ -528,11 +945,11 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
 
                     <div className="min-w-0">
                       <span className="text-[10px] font-black uppercase tracking-wider text-black block">
-                        Data de Vencimento
+                        {dataLabel}
                       </span>
                       <div className="flex items-center gap-1.5 text-black font-bold text-xs mt-0.5 min-w-0">
                         <Calendar className="w-3.5 h-3.5 text-black shrink-0" />
-                        <span className="truncate text-black">{dataVencimento}</span>
+                        <span className="truncate text-black">{dataExibicao}</span>
                       </div>
                     </div>
                   </div>
@@ -541,11 +958,13 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
                   <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-800">
                     <div>
                       <span className="text-[10px] font-black uppercase tracking-wider text-black dark:text-slate-300 block">
-                        Valor {isOverdue && entry.interestValue > 0 ? 'com Juros' : ''}
+                        {isIncomes
+                          ? 'Valor Recebido'
+                          : isOverdue && entry.interestValue > 0
+                          ? 'Valor com Juros'
+                          : 'Valor'}
                       </span>
-                      <span
-                        className="text-lg sm:text-xl font-black font-mono tracking-tight tabular-nums text-black dark:text-white"
-                      >
+                      <span className="text-lg sm:text-xl font-black font-mono tracking-tight tabular-nums text-black dark:text-white">
                         {valorFormatado}
                       </span>
                     </div>
@@ -560,12 +979,26 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
                           Sem juros adicionais
                         </span>
                       )
-                    ) : (
+                    ) : isToPay ? (
                       diffDays > 0 && (
                         <span className="text-[11px] font-bold text-black dark:text-blue-300">
                           {diffDays === 1 ? 'Vence amanhã' : `Vence em ${diffDays} dias`}
                         </span>
                       )
+                    ) : isPaid ? (
+                      entry.interestValue > 0 ? (
+                        <span className="text-[11px] font-bold text-black dark:text-slate-300">
+                          + {formatBRL(entry.interestValue)} juros pagos
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-bold text-black dark:text-slate-300">
+                          Liquidado integralmente
+                        </span>
+                      )
+                    ) : (
+                      <span className="text-[11px] font-bold text-black dark:text-emerald-300">
+                        Entrada confirmada
+                      </span>
                     )}
                   </div>
                 </div>
@@ -574,6 +1007,157 @@ export const StatusDetailsView: React.FC<StatusDetailsViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Modal de Período Personalizado */}
+      {isCustomDateModalOpen && (
+        <div
+          id="modal-periodo-personalizado-overlay"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 overflow-y-auto"
+          onClick={handleCloseCustomDateModal}
+        >
+          <div
+            id="modal-periodo-personalizado-box"
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Cabeçalho do Modal */}
+            <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`p-2 rounded-lg ${
+                    isOverdue
+                      ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-600 dark:text-rose-400'
+                      : isToPay
+                      ? 'bg-blue-100 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400'
+                      : isPaid
+                      ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                      : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400'
+                  }`}
+                >
+                  <Calendar className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Personalizado 📅
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {isOverdue
+                      ? 'Filtrar por data de vencimento'
+                      : isToPay
+                      ? 'Filtrar por data de vencimento'
+                      : isPaid
+                      ? 'Filtrar por data do pagamento'
+                      : 'Filtrar por data do recebimento'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                id="btn-fechar-modal-periodo"
+                onClick={handleCloseCustomDateModal}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Conteúdo do Modal */}
+            <div className="p-4 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label
+                    htmlFor="custom-start-date"
+                    className="block text-xs font-bold text-slate-700 dark:text-slate-300"
+                  >
+                    Data inicial
+                  </label>
+                  <input
+                    type="date"
+                    id="custom-start-date"
+                    value={tempStartDate}
+                    onChange={(e) => setTempStartDate(e.target.value)}
+                    className="w-full px-3 py-2 text-xs sm:text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-medium focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label
+                    htmlFor="custom-end-date"
+                    className="block text-xs font-bold text-slate-700 dark:text-slate-300"
+                  >
+                    Data final
+                  </label>
+                  <input
+                    type="date"
+                    id="custom-end-date"
+                    value={tempEndDate}
+                    onChange={(e) => setTempEndDate(e.target.value)}
+                    className="w-full px-3 py-2 text-xs sm:text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-medium focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Informação do Critério */}
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-400">
+                <span>
+                  Critério de data:{' '}
+                  <strong className="text-slate-900 dark:text-white font-semibold">
+                    {isOverdue || isToPay
+                      ? 'Data de Vencimento'
+                      : isPaid
+                      ? 'Data do Pagamento'
+                      : 'Data do Recebimento'}
+                  </strong>
+                  . Os lançamentos fora do período escolhido não serão exibidos.
+                </span>
+              </div>
+            </div>
+
+            {/* Rodapé de Ações */}
+            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40">
+              <div>
+                {(customStartDate || customEndDate || subFilter === 'custom') && (
+                  <button
+                    type="button"
+                    id="btn-limpar-periodo-modal"
+                    onClick={handleClearCustomFilter}
+                    className="text-xs font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 hover:underline cursor-pointer"
+                  >
+                    Limpar filtro
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  id="btn-cancelar-modal-periodo"
+                  onClick={handleCloseCustomDateModal}
+                  className="px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer border border-slate-300 dark:border-slate-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  id="btn-confirmar-modal-periodo"
+                  onClick={handleConfirmCustomDateModal}
+                  className={`px-4 py-1.5 text-xs font-bold text-white rounded-lg transition-all cursor-pointer shadow-xs ${
+                    isOverdue
+                      ? 'bg-rose-600 hover:bg-rose-700'
+                      : isToPay
+                      ? 'bg-blue-600 hover:bg-blue-700'
+                      : isPaid
+                      ? 'bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600'
+                      : 'bg-emerald-600 hover:bg-emerald-700'
+                  }`}
+                >
+                  Confirmar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

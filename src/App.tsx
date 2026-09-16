@@ -16,7 +16,17 @@ import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 function AppContent() {
   const { user, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'entries' | 'suppliers' | 'config' | 'upcoming-details' | 'overdue-details' | 'to-pay-details'>('dashboard');
+  const [activeTab, setActiveTab] = useState<
+    | 'dashboard'
+    | 'entries'
+    | 'suppliers'
+    | 'config'
+    | 'upcoming-details'
+    | 'overdue-details'
+    | 'to-pay-details'
+    | 'paid-details'
+    | 'incomes-details'
+  >('dashboard');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('theme_preference') === 'dark';
@@ -468,6 +478,8 @@ function AppContent() {
             onViewUpcomingDetails={() => setActiveTab('upcoming-details')}
             onViewOverdueDetails={() => setActiveTab('overdue-details')}
             onViewToPayDetails={() => setActiveTab('to-pay-details')}
+            onViewPaidDetails={() => setActiveTab('paid-details')}
+            onViewIncomesDetails={() => setActiveTab('incomes-details')}
           />
         )}
 
@@ -490,6 +502,22 @@ function AppContent() {
           <StatusDetailsView
             entries={calculatedEntries}
             type="to-pay"
+            onBack={() => setActiveTab('dashboard')}
+          />
+        )}
+
+        {activeTab === 'paid-details' && (
+          <StatusDetailsView
+            entries={calculatedEntries}
+            type="paid"
+            onBack={() => setActiveTab('dashboard')}
+          />
+        )}
+
+        {activeTab === 'incomes-details' && (
+          <StatusDetailsView
+            incomes={incomes}
+            type="incomes"
             onBack={() => setActiveTab('dashboard')}
           />
         )}

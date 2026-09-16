@@ -13,7 +13,16 @@ import {
 import { useAuth } from '../context/AuthContext';
 
 interface NavbarProps {
-  activeTab: 'dashboard' | 'entries' | 'suppliers' | 'config' | 'upcoming-details' | 'overdue-details' | 'to-pay-details';
+  activeTab:
+    | 'dashboard'
+    | 'entries'
+    | 'suppliers'
+    | 'config'
+    | 'upcoming-details'
+    | 'overdue-details'
+    | 'to-pay-details'
+    | 'paid-details'
+    | 'incomes-details';
   setActiveTab: (tab: 'dashboard' | 'entries' | 'suppliers' | 'config') => void;
   onLogout?: () => void;
   isSyncing?: boolean;
@@ -87,7 +96,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                   activeTab === 'dashboard' ||
                   activeTab === 'upcoming-details' ||
                   activeTab === 'overdue-details' ||
-                  activeTab === 'to-pay-details'
+                  activeTab === 'to-pay-details' ||
+                  activeTab === 'paid-details' ||
+                  activeTab === 'incomes-details'
                     ? 'bg-blue-600 text-white shadow-xs'
                     : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
                 }`}
@@ -217,7 +228,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               activeTab === 'dashboard' ||
               activeTab === 'upcoming-details' ||
               activeTab === 'overdue-details' ||
-              activeTab === 'to-pay-details'
+              activeTab === 'to-pay-details' ||
+              activeTab === 'paid-details' ||
+              activeTab === 'incomes-details'
                 ? 'bg-blue-600/20 text-blue-400 font-bold'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
@@ -227,7 +240,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                 activeTab === 'dashboard' ||
                 activeTab === 'upcoming-details' ||
                 activeTab === 'overdue-details' ||
-                activeTab === 'to-pay-details'
+                activeTab === 'to-pay-details' ||
+                activeTab === 'paid-details' ||
+                activeTab === 'incomes-details'
                   ? 'text-blue-400'
                   : ''
               }`}

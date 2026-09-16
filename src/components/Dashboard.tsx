@@ -46,6 +46,8 @@ interface DashboardProps {
   onViewUpcomingDetails?: () => void;
   onViewOverdueDetails?: () => void;
   onViewToPayDetails?: () => void;
+  onViewPaidDetails?: () => void;
+  onViewIncomesDetails?: () => void;
 }
 
 const STORAGE_KEY_MODE = 'contas_pagar_period_mode'; // 'MONTH' | 'ALL'
@@ -60,6 +62,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onViewUpcomingDetails,
   onViewOverdueDetails,
   onViewToPayDetails,
+  onViewPaidDetails,
+  onViewIncomesDetails,
 }) => {
   // Current real date defaults
   const today = new Date();
@@ -878,39 +882,73 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* Card 3 - Total Pago (Saídas) */}
-        <div className="p-3 rounded-lg border bg-slate-100 border-slate-200 text-slate-900 dark:bg-slate-800/90 dark:border-slate-700 dark:text-slate-100 shadow-2xs flex items-center justify-between transition-all hover:border-slate-300">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-              <span>Total Pago (Saídas)</span>
+        <div className="p-3 rounded-lg border bg-slate-100 border-slate-200 text-slate-900 dark:bg-slate-800/90 dark:border-slate-700 dark:text-slate-100 shadow-2xs flex flex-col justify-between transition-all hover:border-slate-300">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                <span>Total Pago (Saídas)</span>
+              </div>
+              <div className="text-lg font-extrabold tracking-tight font-mono tabular-nums text-slate-900 dark:text-slate-100">
+                {formatBRL(totalPaid)}
+              </div>
+              <p className="text-[10px] font-medium text-slate-600 dark:text-slate-400">
+                {countPaid} {countPaid === 1 ? 'liquidado' : 'liquidados'}
+              </p>
             </div>
-            <div className="text-lg font-extrabold tracking-tight font-mono tabular-nums text-slate-900 dark:text-slate-100">
-              {formatBRL(totalPaid)}
+            <div className="p-2 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm font-bold">
+              💸
             </div>
-            <p className="text-[10px] font-medium text-slate-600 dark:text-slate-400">
-              {countPaid} {countPaid === 1 ? 'liquidado' : 'liquidados'}
-            </p>
           </div>
-          <div className="p-2 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm font-bold">
-            💸
+          <div className="pt-2 mt-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-end">
+            <button
+              type="button"
+              id="btn-ver-detalhes-total-pago"
+              onClick={() => {
+                if (onViewPaidDetails) {
+                  onViewPaidDetails();
+                }
+              }}
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 transition-colors cursor-pointer py-0.5 px-1.5 rounded hover:bg-slate-200/80 dark:hover:bg-slate-700/50"
+            >
+              Exibir detalhes
+              <ArrowRight className="w-3 h-3" />
+            </button>
           </div>
         </div>
 
         {/* Card 4 - Total Entradas (Receitas) */}
-        <div className="p-3 rounded-lg border-2 bg-emerald-50 border-emerald-500/60 text-emerald-950 dark:bg-emerald-950/70 dark:border-emerald-700/80 dark:text-emerald-100 shadow-2xs flex items-center justify-between transition-all hover:border-emerald-500">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
-              <TrendingUp className="w-3 h-3 text-emerald-600" />
-              <span>Total Entradas</span>
+        <div className="p-3 rounded-lg border-2 bg-emerald-50 border-emerald-500/60 text-emerald-950 dark:bg-emerald-950/70 dark:border-emerald-700/80 dark:text-emerald-100 shadow-2xs flex flex-col justify-between transition-all hover:border-emerald-500">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                <TrendingUp className="w-3 h-3 text-emerald-600" />
+                <span>Total Entradas</span>
+              </div>
+              <div className="text-lg font-extrabold tracking-tight font-mono tabular-nums text-emerald-700 dark:text-emerald-300">
+                {formatBRL(totalIncomesPeriod)}
+              </div>
+              <p className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300">
+                {countIncomesPeriod} {countIncomesPeriod === 1 ? 'recebimento' : 'recebimentos'}
+              </p>
             </div>
-            <div className="text-lg font-extrabold tracking-tight font-mono tabular-nums text-emerald-700 dark:text-emerald-300">
-              {formatBRL(totalIncomesPeriod)}
+            <div className="p-2 rounded-md bg-emerald-200/90 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-100 text-sm font-bold shadow-2xs">
+              💰
             </div>
-            <p className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300">
-              {countIncomesPeriod} {countIncomesPeriod === 1 ? 'recebimento' : 'recebimentos'}
-            </p>
           </div>
-          <div className="p-2 rounded-md bg-emerald-200/90 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-100 text-sm font-bold shadow-2xs">
-            💰
+          <div className="pt-2 mt-2 border-t border-emerald-200 dark:border-emerald-800 flex items-center justify-end">
+            <button
+              type="button"
+              id="btn-ver-detalhes-total-entradas"
+              onClick={() => {
+                if (onViewIncomesDetails) {
+                  onViewIncomesDetails();
+                }
+              }}
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 hover:text-emerald-950 dark:text-emerald-300 dark:hover:text-emerald-200 transition-colors cursor-pointer py-0.5 px-1.5 rounded hover:bg-emerald-100/80 dark:hover:bg-emerald-900/50"
+            >
+              Exibir detalhes
+              <ArrowRight className="w-3 h-3" />
+            </button>
           </div>
         </div>
 
